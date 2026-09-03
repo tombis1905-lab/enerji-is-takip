@@ -1,0 +1,2595 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Enerji \u0130\u015f Takip API",
+    "version": "1.0.0",
+    "description": "Enerji nakil hatt\u0131 in\u015faat\u0131 i\u015f takip uygulamas\u0131 API'si"
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "Success": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Santiye": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ad": {
+            "type": "string"
+          },
+          "konum": {
+            "type": "string",
+            "nullable": true
+          },
+          "aktif": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "_count": {
+            "type": "object",
+            "properties": {
+              "isKayitlari": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "IsTuru": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ad": {
+            "type": "string"
+          },
+          "birim": {
+            "type": "string"
+          },
+          "aktif": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "IsKaydiFoto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "cloudStoragePath": {
+            "type": "string"
+          },
+          "isPublic": {
+            "type": "boolean"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "isKaydiId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "IsKaydi": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tarih": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "miktar": {
+            "type": "number"
+          },
+          "aciklama": {
+            "type": "string",
+            "nullable": true
+          },
+          "userId": {
+            "type": "string"
+          },
+          "santiyeId": {
+            "type": "string"
+          },
+          "isTuruId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "santiye": {
+            "type": "object",
+            "properties": {
+              "ad": {
+                "type": "string"
+              }
+            }
+          },
+          "isTuru": {
+            "type": "object",
+            "properties": {
+              "ad": {
+                "type": "string"
+              },
+              "birim": {
+                "type": "string"
+              }
+            }
+          },
+          "fotograflar": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IsKaydiFoto"
+            }
+          }
+        }
+      },
+      "Arac": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "plaka": {
+            "type": "string"
+          },
+          "isim": {
+            "type": "string",
+            "nullable": true
+          },
+          "marka": {
+            "type": "string",
+            "nullable": true
+          },
+          "model": {
+            "type": "string",
+            "nullable": true
+          },
+          "aktif": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "_count": {
+            "type": "object",
+            "properties": {
+              "akaryakitKayitlari": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "AkaryakitKaydi": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tarih": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "tutar": {
+            "type": "number"
+          },
+          "fisNo": {
+            "type": "string",
+            "nullable": true
+          },
+          "aciklama": {
+            "type": "string",
+            "nullable": true
+          },
+          "aracId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "arac": {
+            "type": "object",
+            "properties": {
+              "plaka": {
+                "type": "string"
+              },
+              "isim": {
+                "type": "string",
+                "nullable": true
+              },
+              "marka": {
+                "type": "string",
+                "nullable": true
+              },
+              "model": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          },
+          "user": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "Personel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "ADMIN",
+              "PERSONEL"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "_count": {
+            "type": "object",
+            "properties": {
+              "isKayitlari": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "DashboardResponse": {
+        "type": "object",
+        "properties": {
+          "toplamKayit": {
+            "type": "integer"
+          },
+          "gunlukKayit": {
+            "type": "integer"
+          },
+          "haftalikKayit": {
+            "type": "integer"
+          },
+          "aylikKayit": {
+            "type": "integer"
+          },
+          "isTuruOzetleri": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ad": {
+                  "type": "string"
+                },
+                "birim": {
+                  "type": "string"
+                },
+                "toplam": {
+                  "type": "number"
+                },
+                "kayitSayisi": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "santiyeOzetleri": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ad": {
+                  "type": "string"
+                },
+                "kayitSayisi": {
+                  "type": "integer"
+                },
+                "toplamMiktar": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "santiyeBazliKirilim": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "santiyeAd": {
+                  "type": "string"
+                },
+                "santiyeId": {
+                  "type": "string"
+                },
+                "isTurleri": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "ad": {
+                        "type": "string"
+                      },
+                      "birim": {
+                        "type": "string"
+                      },
+                      "toplam": {
+                        "type": "number"
+                      },
+                      "kayitSayisi": {
+                        "type": "integer"
+                      },
+                      "isTuruId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "tumSantiyeler": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "ad": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "tumIsTurleri": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "ad": {
+                  "type": "string"
+                },
+                "birim": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "sonKayitlar": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IsKaydi"
+            }
+          },
+          "zamanSerisi": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tarih": {
+                  "type": "string"
+                },
+                "kayitSayisi": {
+                  "type": "integer"
+                },
+                "toplamMiktar": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      },
+      "PresignedUrlResponse": {
+        "type": "object",
+        "properties": {
+          "uploadUrl": {
+            "type": "string"
+          },
+          "cloud_storage_path": {
+            "type": "string"
+          },
+          "publicUrl": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/dashboard": {
+      "get": {
+        "operationId": "getDashboard",
+        "summary": "G\u00f6sterge paneli verilerini getirir",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dashboard verileri",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/santiyeler": {
+      "get": {
+        "operationId": "listSantiyeler",
+        "summary": "T\u00fcm \u015fantiyeleri listeler",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "\u015eantiye listesi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Santiye"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createSantiye",
+        "summary": "Yeni \u015fantiye olu\u015fturur (sadece admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ad"
+                ],
+                "properties": {
+                  "ad": {
+                    "type": "string"
+                  },
+                  "konum": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Olu\u015fturulan \u015fantiye",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Santiye"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ge\u00e7ersiz veri",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Yetki yok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/santiyeler/{id}": {
+      "put": {
+        "operationId": "updateSantiye",
+        "summary": "\u015eantiye g\u00fcnceller (sadece admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ad": {
+                    "type": "string"
+                  },
+                  "konum": {
+                    "type": "string"
+                  },
+                  "aktif": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "G\u00fcncellenen \u015fantiye",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Santiye"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Yetki yok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSantiye",
+        "summary": "\u015eantiye siler (sadece admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ba\u015far\u0131l\u0131",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ba\u011fl\u0131 kay\u0131t var",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Yetki yok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/is-turleri": {
+      "get": {
+        "operationId": "listIsTurleri",
+        "summary": "T\u00fcm i\u015f t\u00fcrlerini listeler",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "\u0130\u015f t\u00fcr\u00fc listesi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IsTuru"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createIsTuru",
+        "summary": "Yeni i\u015f t\u00fcr\u00fc olu\u015fturur (sadece admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ad",
+                  "birim"
+                ],
+                "properties": {
+                  "ad": {
+                    "type": "string"
+                  },
+                  "birim": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Olu\u015fturulan i\u015f t\u00fcr\u00fc",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IsTuru"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ge\u00e7ersiz veri",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Yetki yok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/is-turleri/{id}": {
+      "delete": {
+        "operationId": "deleteIsTuru",
+        "summary": "\u0130\u015f t\u00fcr\u00fc siler (sadece admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ba\u015far\u0131l\u0131",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ba\u011fl\u0131 kay\u0131t var",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Yetki yok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/is-kayitlari": {
+      "get": {
+        "operationId": "listIsKayitlari",
+        "summary": "\u0130\u015f kay\u0131tlar\u0131n\u0131 listeler (personel sadece kendininkileri g\u00f6r\u00fcr)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "santiyeId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "isTuruId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "\u0130\u015f kay\u0131tlar\u0131 listesi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "kayitlar": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/IsKaydi"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createIsKaydi",
+        "summary": "Yeni i\u015f kayd\u0131 olu\u015fturur",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tarih",
+                  "miktar",
+                  "santiyeId",
+                  "isTuruId"
+                ],
+                "properties": {
+                  "tarih": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "miktar": {
+                    "type": "number"
+                  },
+                  "aciklama": {
+                    "type": "string"
+                  },
+                  "santiyeId": {
+                    "type": "string"
+                  },
+                  "isTuruId": {
+                    "type": "string"
+                  },
+                  "fotograflar": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "cloud_storage_path": {
+                          "type": "string"
+                        },
+                        "isPublic": {
+                          "type": "boolean"
+                        },
+                        "contentType": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "cloud_storage_path"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Olu\u015fturulan kay\u0131t",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IsKaydi"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ge\u00e7ersiz veri",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/is-kayitlari/{id}": {
+      "put": {
+        "operationId": "updateIsKaydi",
+        "summary": "\u0130\u015f kayd\u0131 g\u00fcnceller (sadece admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tarih": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "miktar": {
+                    "type": "number"
+                  },
+                  "aciklama": {
+                    "type": "string"
+                  },
+                  "santiyeId": {
+                    "type": "string"
+                  },
+                  "isTuruId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "G\u00fcncellenen kay\u0131t",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IsKaydi"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Yetki yok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteIsKaydi",
+        "summary": "\u0130\u015f kayd\u0131 siler (sadece admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ba\u015far\u0131l\u0131",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Yetki yok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/araclar": {
+      "get": {
+        "operationId": "listAraclar",
+        "summary": "T\u00fcm ara\u00e7lar\u0131 listeler",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ara\u00e7 listesi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Arac"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createArac",
+        "summary": "Yeni ara\u00e7 ekler (sadece admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "plaka"
+                ],
+                "properties": {
+                  "plaka": {
+                    "type": "string"
+                  },
+                  "isim": {
+                    "type": "string"
+                  },
+                  "marka": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Olu\u015fturulan ara\u00e7",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Arac"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ge\u00e7ersiz veri",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Yetki yok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Plaka zaten kay\u0131tl\u0131",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/araclar/{id}": {
+      "put": {
+        "operationId": "updateArac",
+        "summary": "Ara\u00e7 g\u00fcnceller (sadece admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "plaka": {
+                    "type": "string"
+                  },
+                  "isim": {
+                    "type": "string"
+                  },
+                  "marka": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "aktif": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "G\u00fcncellenen ara\u00e7",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Arac"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Yetki yok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Plaka zaten kay\u0131tl\u0131",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteArac",
+        "summary": "Ara\u00e7 siler (sadece admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ba\u015far\u0131l\u0131",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ba\u011fl\u0131 kay\u0131t var",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Yetki yok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/akaryakit": {
+      "get": {
+        "operationId": "listAkaryakit",
+        "summary": "Akaryak\u0131t kay\u0131tlar\u0131n\u0131 listeler",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "aracId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ay",
+            "in": "query",
+            "description": "YYYY-MM format\u0131nda ay filtresi",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Akaryak\u0131t kay\u0131tlar\u0131",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "kayitlar": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AkaryakitKaydi"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "totalPages": {
+                      "type": "integer"
+                    },
+                    "aracOzet": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "aracId": {
+                            "type": "string"
+                          },
+                          "_sum": {
+                            "type": "object",
+                            "properties": {
+                              "tutar": {
+                                "type": "number",
+                                "nullable": true
+                              }
+                            }
+                          },
+                          "_count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "genelToplam": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAkaryakit",
+        "summary": "Yeni akaryak\u0131t kayd\u0131 olu\u015fturur",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tarih",
+                  "tutar",
+                  "aracId"
+                ],
+                "properties": {
+                  "tarih": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "tutar": {
+                    "type": "number"
+                  },
+                  "fisNo": {
+                    "type": "string"
+                  },
+                  "aciklama": {
+                    "type": "string"
+                  },
+                  "aracId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Olu\u015fturulan kay\u0131t",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkaryakitKaydi"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ge\u00e7ersiz veri",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/akaryakit/{id}": {
+      "put": {
+        "operationId": "updateAkaryakit",
+        "summary": "Akaryak\u0131t kayd\u0131 g\u00fcnceller (sadece admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tarih": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "tutar": {
+                    "type": "number"
+                  },
+                  "fisNo": {
+                    "type": "string"
+                  },
+                  "aciklama": {
+                    "type": "string"
+                  },
+                  "aracId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "G\u00fcncellenen kay\u0131t",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkaryakitKaydi"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Yetki yok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteAkaryakit",
+        "summary": "Akaryak\u0131t kayd\u0131 siler (sadece admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ba\u015far\u0131l\u0131",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Yetki yok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/personeller": {
+      "get": {
+        "operationId": "listPersoneller",
+        "summary": "T\u00fcm personelleri listeler (sadece admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Personel listesi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Personel"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Yetki yok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPersonel",
+        "summary": "Yeni personel olu\u015fturur (sadece admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "password",
+                  "name"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "ADMIN",
+                      "PERSONEL"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Olu\u015fturulan personel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ge\u00e7ersiz veri",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Yetki yok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/personeller/{id}": {
+      "put": {
+        "operationId": "updatePersonel",
+        "summary": "Personel g\u00fcnceller (sadece admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "ADMIN",
+                      "PERSONEL"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "G\u00fcncellenen personel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Yetki yok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deletePersonel",
+        "summary": "Personel siler (sadece admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ba\u015far\u0131l\u0131",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ba\u011fl\u0131 kay\u0131t var veya kendi hesap",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Yetki yok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/upload/presigned": {
+      "post": {
+        "operationId": "getPresignedUploadUrl",
+        "summary": "Dosya y\u00fckleme i\u00e7in presigned URL olu\u015fturur",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "fileName",
+                  "contentType"
+                ],
+                "properties": {
+                  "fileName": {
+                    "type": "string"
+                  },
+                  "contentType": {
+                    "type": "string"
+                  },
+                  "isPublic": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Presigned URL bilgileri",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresignedUrlResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ge\u00e7ersiz veri",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Yetkisiz",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/signup": {
+      "post": {
+        "operationId": "signup",
+        "summary": "Yeni kullan\u0131c\u0131 kayd\u0131 (PERSONEL rol\u00fcyle)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Olu\u015fturulan kullan\u0131c\u0131",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ge\u00e7ersiz veri veya kullan\u0131c\u0131 ad\u0131 mevcut",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile-auth/signup": {
+      "post": {
+        "operationId": "mobileSignup",
+        "summary": "Create an account and return a bearer token.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "email",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    },
+                    "user": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "email": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "image": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      },
+                      "description": "The signed-in user from NextAuth's session."
+                    }
+                  },
+                  "required": [
+                    "token"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An account with that email already exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Signup is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile-auth/login": {
+      "post": {
+        "operationId": "mobileLogin",
+        "summary": "Exchange credentials for a bearer token.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "username": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    },
+                    "user": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "email": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "image": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      },
+                      "description": "The signed-in user from NextAuth's session."
+                    }
+                  },
+                  "required": [
+                    "token"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Email and password are required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid email or password.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Authentication is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile-auth/me": {
+      "get": {
+        "operationId": "getMobileAuthMe",
+        "summary": "The user for the supplied bearer token.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The signed-in user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "email": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "image": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      },
+                      "description": "The signed-in user from NextAuth's session."
+                    }
+                  },
+                  "required": [
+                    "user"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session for this token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
