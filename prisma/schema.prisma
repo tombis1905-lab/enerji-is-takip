@@ -1,0 +1,108 @@
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  PERSONEL
+}
+
+model User {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  password    String
+  name        String
+  role        Role      @default(PERSONEL)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  isKayitlari IsKaydi[]
+  akaryakitKayitlari AkaryakitKaydi[]
+}
+
+model Santiye {
+  id          String    @id @default(cuid())
+  ad          String
+  konum       String?
+  aktif       Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  isKayitlari IsKaydi[]
+}
+
+model IsTuru {
+  id          String    @id @default(cuid())
+  ad          String    @unique
+  birim       String
+  aktif       Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  isKayitlari IsKaydi[]
+}
+
+model IsKaydi {
+  id          String        @id @default(cuid())
+  tarih       DateTime
+  miktar      Float
+  aciklama    String?
+  userId      String
+  santiyeId   String
+  isTuruId    String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  user        User          @relation(fields: [userId], references: [id])
+  santiye     Santiye       @relation(fields: [santiyeId], references: [id])
+  isTuru      IsTuru        @relation(fields: [isTuruId], references: [id])
+  fotograflar IsKaydiFoto[]
+
+  @@index([userId])
+  @@index([santiyeId])
+  @@index([tarih])
+  @@index([isTuruId])
+}
+
+model Arac {
+  id          String    @id @default(cuid())
+  plaka       String    @unique
+  isim        String?
+  marka       String?
+  model       String?
+  aktif       Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  akaryakitKayitlari AkaryakitKaydi[]
+}
+
+model AkaryakitKaydi {
+  id          String    @id @default(cuid())
+  tarih       DateTime
+  tutar       Float
+  fisNo       String?
+  aciklama    String?
+  aracId      String
+  userId      String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  arac        Arac      @relation(fields: [aracId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@index([aracId])
+  @@index([tarih])
+  @@index([userId])
+}
+
+model IsKaydiFoto {
+  id               String   @id @default(cuid())
+  cloudStoragePath String
+  isPublic         Boolean  @default(true)
+  contentType      String   @default("image/jpeg")
+  isKaydiId        String
+  createdAt        DateTime @default(now())
+  isKaydi          IsKaydi  @relation(fields: [isKaydiId], references: [id], onDelete: Cascade)
+
+  @@index([isKaydiId])
+}
