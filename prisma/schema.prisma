@@ -24,6 +24,7 @@ model User {
   isKayitlari IsKaydi[]
   akaryakitKayitlari AkaryakitKaydi[]
   depoHareketleri DepoHareketi[]
+  sirketGecmisi PersonelSirket[]
 }
 
 model Santiye {
@@ -141,4 +142,29 @@ model DepoHareketi {
   @@index([malzemeId])
   @@index([tarih])
   @@index([userId])
+}
+
+model Sirket {
+  id                 String            @id @default(cuid())
+  ad                 String            @unique
+  aktif              Boolean           @default(true)
+  createdAt          DateTime          @default(now())
+  personelSirketleri PersonelSirket[]
+}
+
+model PersonelSirket {
+  id              String    @id @default(cuid())
+  personelId      String
+  sirketId        String
+  baslangicTarihi DateTime
+  bitisTarihi     DateTime?
+  aciklama        String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  personel        User      @relation(fields: [personelId], references: [id], onDelete: Cascade)
+  sirket          Sirket    @relation(fields: [sirketId], references: [id])
+
+  @@index([personelId])
+  @@index([sirketId])
+  @@index([bitisTarihi])
 }

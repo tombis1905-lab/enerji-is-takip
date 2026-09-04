@@ -86,6 +86,16 @@ async function main() {
     })
   }
 
+  // Şirketler - Tom'un 3 şirketi (personel bunlar arasında geçiş yapabilir)
+  const sirketler = ['MAREL', 'BERKTEK', 'OKTAY']
+  for (const ad of sirketler) {
+    await prisma.sirket.upsert({
+      where: { ad },
+      update: {},
+      create: { ad },
+    })
+  }
+
   console.log('Seed completed successfully!')
 }
 
