@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Truck, Plus, Pencil, Trash2, Check, Ban, Download } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Truck, Plus, Pencil, Trash2, Check, Ban, Download, ShieldCheck, ClipboardCheck, AlertTriangle } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 interface Arac {
@@ -15,7 +16,43 @@ interface Arac {
   marka: string | null
   model: string | null
   aktif: boolean
+  sigortaBitisTarihi: string | null
+  muayeneBitisTarihi: string | null
   _count?: { akaryakitKayitlari: number }
+}
+
+type DurumSeviye = 'yok' | 'gecmis' | 'yakin' | 'iyi'
+
+function durumHesapla(tarihStr: string | null): { seviye: DurumSeviye; metin: string } {
+  if (!tarihStr) return { seviye: 'yok', metin: 'Tarih girilmemiş' }
+  const bitis = new Date(tarihStr)
+  const now = new Date()
+  const gunFarki = Math.ceil((bitis.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+  if (gunFarki < 0) return { seviye: 'gecmis', metin: `${Math.abs(gunFarki)} gün önce bitti — SÜRESİ DOLDU` }
+  if (gunFarki <= 30) return { seviye: 'yakin', metin: `${gunFarki} gün kaldı` }
+  return { seviye: 'iyi', metin: `${gunFarki} gün kaldı` }
+}
+
+const seviyeRenk: Record<DurumSeviye, string> = {
+  yok: 'bg-muted text-muted-foreground',
+  gecmis: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  yakin: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  iyi: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+}
+
+function tarihStr(d: string | null) {
+  if (!d) return '—'
+  return new Date(d).toLocaleDateString('tr-TR')
+}
+
+function DurumBadge({ tarihStr: t }: { tarihStr: string | null }) {
+  const { seviye, metin } = durumHesapla(t)
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${seviyeRenk[seviye]}`}>
+      {seviye === 'gecmis' && <AlertTriangle className="h-3 w-3" />}
+      {t ? `${tarihStr(t)} · ${metin}` : metin}
+    </span>
+  )
 }
 
 export function AraclarClient() {
@@ -23,9 +60,10 @@ export function AraclarClient() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState({ plaka: '', isim: '', marka: '', model: '' })
+  const [form, setForm] = useState({ plaka: '', isim: '', marka: '', model: '', sigortaBitisTarihi: '', muayeneBitisTarihi: '' })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [detayArac, setDetayArac] = useState<Arac | null>(null)
 
   const fetchAraclar = useCallback(async () => {
     const res = await fetch('/api/araclar')
@@ -36,7 +74,7 @@ export function AraclarClient() {
   useEffect(() => { fetchAraclar() }, [fetchAraclar])
 
   const resetForm = () => {
-    setForm({ plaka: '', isim: '', marka: '', model: '' })
+    setForm({ plaka: '', isim: '', marka: '', model: '', sigortaBitisTarihi: '', muayeneBitisTarihi: '' })
     setShowForm(false)
     setEditId(null)
     setError('')
@@ -68,7 +106,14 @@ export function AraclarClient() {
   }
 
   const handleEdit = (a: Arac) => {
-    setForm({ plaka: a.plaka, isim: a.isim || '', marka: a.marka || '', model: a.model || '' })
+    setForm({
+      plaka: a.plaka,
+      isim: a.isim || '',
+      marka: a.marka || '',
+      model: a.model || '',
+      sigortaBitisTarihi: a.sigortaBitisTarihi ? a.sigortaBitisTarihi.slice(0, 10) : '',
+      muayeneBitisTarihi: a.muayeneBitisTarihi ? a.muayeneBitisTarihi.slice(0, 10) : '',
+    })
     setEditId(a.id)
     setShowForm(true)
     setError('')
@@ -101,6 +146,8 @@ export function AraclarClient() {
       'Marka': a.marka || '',
       'Model': a.model || '',
       'Durum': a.aktif ? 'Aktif' : 'Pasif',
+      'Sigorta Bitiş': tarihStr(a.sigortaBitisTarihi),
+      'Muayene Bitiş': tarihStr(a.muayeneBitisTarihi),
       'Fiş Sayısı': a._count?.akaryakitKayitlari ?? 0,
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
@@ -122,7 +169,7 @@ export function AraclarClient() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold font-display">Araçlar</h2>
-          <p className="text-muted-foreground text-sm">Şirket araçlarını yönetin</p>
+          <p className="text-muted-foreground text-sm">Şirket araçlarını, sigorta ve muayene tarihlerini yönetin</p>
         </div>
         <div className="flex gap-2">
           {araclar.length > 0 && (
@@ -176,6 +223,22 @@ export function AraclarClient() {
                   placeholder="Transit, Actros..."
                 />
               </div>
+              <div>
+                <Label className="flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" /> Sigorta Bitiş Tarihi</Label>
+                <Input
+                  type="date"
+                  value={form.sigortaBitisTarihi}
+                  onChange={(e) => setForm({ ...form, sigortaBitisTarihi: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label className="flex items-center gap-1"><ClipboardCheck className="h-3.5 w-3.5" /> Muayene Bitiş Tarihi</Label>
+                <Input
+                  type="date"
+                  value={form.muayeneBitisTarihi}
+                  onChange={(e) => setForm({ ...form, muayeneBitisTarihi: e.target.value })}
+                />
+              </div>
               {error && <p className="text-destructive text-sm col-span-full">{error}</p>}
               <div className="col-span-full flex gap-2">
                 <Button type="submit" disabled={saving} className="bg-secondary hover:bg-secondary/90">
@@ -196,9 +259,9 @@ export function AraclarClient() {
                 <tr className="border-b bg-muted/50">
                   <th className="text-left p-3 font-semibold">Plaka</th>
                   <th className="text-left p-3 font-semibold">Kullanan</th>
-                  <th className="text-left p-3 font-semibold">Marka</th>
-                  <th className="text-left p-3 font-semibold">Model</th>
-                  <th className="text-center p-3 font-semibold">Kayıt</th>
+                  <th className="text-left p-3 font-semibold">Marka / Model</th>
+                  <th className="text-left p-3 font-semibold">Sigorta</th>
+                  <th className="text-left p-3 font-semibold">Muayene</th>
                   <th className="text-center p-3 font-semibold">Durum</th>
                   <th className="text-right p-3 font-semibold">İşlem</th>
                 </tr>
@@ -214,15 +277,24 @@ export function AraclarClient() {
                 ) : (
                   araclar.map((a) => (
                     <tr key={a.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                      <td className="p-3 font-medium">{a.plaka === 'MİSAFİR ARAÇ' ? '🚛 MİSAFİR ARAÇ' : a.plaka}</td>
-                      <td className="p-3 text-muted-foreground">{a.plaka === 'MİSAFİR ARAÇ' ? 'Misafir / Kiralık / Bidon' : (a.isim || '—')}</td>
-                      <td className="p-3 text-muted-foreground">{a.marka || '—'}</td>
-                      <td className="p-3 text-muted-foreground">{a.model || '—'}</td>
-                      <td className="p-3 text-center">
-                        <span className="text-xs bg-muted px-2 py-0.5 rounded-full">
-                          {a._count?.akaryakitKayitlari ?? 0} fiş
-                        </span>
+                      <td className="p-3 font-medium">
+                        {a.plaka === 'MİSAFİR ARAÇ' ? (
+                          '🚛 MİSAFİR ARAÇ'
+                        ) : (
+                          <button
+                            type="button"
+                            className="hover:underline text-left"
+                            onClick={() => setDetayArac(a)}
+                            title="Sigorta / muayene detayını gör"
+                          >
+                            {a.plaka}
+                          </button>
+                        )}
                       </td>
+                      <td className="p-3 text-muted-foreground">{a.plaka === 'MİSAFİR ARAÇ' ? 'Misafir / Kiralık / Bidon' : (a.isim || '—')}</td>
+                      <td className="p-3 text-muted-foreground">{[a.marka, a.model].filter(Boolean).join(' ') || '—'}</td>
+                      <td className="p-3"><DurumBadge tarihStr={a.sigortaBitisTarihi} /></td>
+                      <td className="p-3"><DurumBadge tarihStr={a.muayeneBitisTarihi} /></td>
                       <td className="p-3 text-center">
                         <span className={`text-xs px-2 py-0.5 rounded-full ${
                           a.aktif ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
@@ -258,6 +330,50 @@ export function AraclarClient() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={!!detayArac} onOpenChange={(open) => { if (!open) setDetayArac(null) }}>
+        <DialogContent>
+          {detayArac && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Truck className="h-5 w-5" /> {detayArac.plaka}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-2">
+                <div className="text-sm text-muted-foreground">
+                  {[detayArac.marka, detayArac.model].filter(Boolean).join(' ') || 'Marka/model girilmemiş'}
+                  {detayArac.isim && ` · Kullanan: ${detayArac.isim}`}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="border rounded-lg p-3 space-y-2">
+                    <div className="flex items-center gap-1.5 text-sm font-medium">
+                      <ShieldCheck className="h-4 w-4" /> Sigorta
+                    </div>
+                    <DurumBadge tarihStr={detayArac.sigortaBitisTarihi} />
+                  </div>
+                  <div className="border rounded-lg p-3 space-y-2">
+                    <div className="flex items-center gap-1.5 text-sm font-medium">
+                      <ClipboardCheck className="h-4 w-4" /> Muayene
+                    </div>
+                    <DurumBadge tarihStr={detayArac.muayeneBitisTarihi} />
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => { handleEdit(detayArac); setDetayArac(null) }}
+                >
+                  <Pencil className="h-3.5 w-3.5 mr-1" /> Tarihleri Düzenle
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

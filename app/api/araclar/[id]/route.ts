@@ -12,7 +12,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params
   const body = await req.json()
-  const { plaka, isim, marka, model: modelAd, aktif } = body
+  const { plaka, isim, marka, model: modelAd, aktif, sigortaBitisTarihi, muayeneBitisTarihi } = body
 
   try {
     const arac = await prisma.arac.update({
@@ -23,6 +23,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         ...(marka !== undefined && { marka: marka?.trim() || null }),
         ...(modelAd !== undefined && { model: modelAd?.trim() || null }),
         ...(aktif !== undefined && { aktif }),
+        ...(sigortaBitisTarihi !== undefined && { sigortaBitisTarihi: sigortaBitisTarihi ? new Date(sigortaBitisTarihi) : null }),
+        ...(muayeneBitisTarihi !== undefined && { muayeneBitisTarihi: muayeneBitisTarihi ? new Date(muayeneBitisTarihi) : null }),
       },
     })
     return NextResponse.json(arac)

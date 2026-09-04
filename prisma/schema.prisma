@@ -73,6 +73,8 @@ model Arac {
   marka       String?
   model       String?
   aktif       Boolean   @default(true)
+  sigortaBitisTarihi DateTime?
+  muayeneBitisTarihi DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   akaryakitKayitlari AkaryakitKaydi[]
