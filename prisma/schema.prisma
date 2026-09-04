@@ -167,6 +167,57 @@ model Calisan {
   sirketGecmisi PersonelSirket[]
 }
 
+// İhale/proje portföy takibi (Çevre Şehircilik ve benzeri kurumlardan alınan
+// işler): mali bilgiler, takvim, kesin teminat mektubu ve hakediş takibi.
+model Ihale {
+  id            String    @id @default(cuid())
+  isAdi         String
+  kurum         String
+  ihaleKayitNo  String?
+  ihaleGrupNo   String?
+  projeNumarasi String?
+
+  yaklasikMaliyet Float?
+  sozlesmeBedeli  Float?
+  ekIsBedeli      Float?
+
+  ihaleTarihi           DateTime?
+  sozlesmeTarihi        DateTime?
+  yerTeslimTarihi       DateTime?
+  sozlesmeSuresiGun     Int?
+  isBitimTarihi         DateTime?
+  isBitimTarihiRevize   DateTime?
+  sureUzatimBitisTarihi DateTime?
+
+  geciciKabulTarihi  DateTime?
+  geciciKabulSayisi  String?
+  kesinKabulTarihi   DateTime?
+  kesinKabulSayisi   String?
+  ilisiksizlikTarihi DateTime?
+  ilisiksizlikSayisi String?
+
+  kesinTeminatMektubu1      Float?
+  kesinTeminatMektubu2      Float?
+  kesinTeminatMektubuSuresi DateTime?
+  kesinTeminatSureUzatimi   DateTime?
+
+  hakedis1     Float?
+  hakedis2     Float?
+  hakedis3     Float?
+  hakedis4     Float?
+  hakedisKesin Float?
+
+  tedasKirimOrani Float?
+
+  aciklama  String?
+  aktif     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([aktif])
+  @@index([isBitimTarihi])
+}
+
 model PersonelSirket {
   id              String    @id @default(cuid())
   calisanId       String
