@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Truck,
   Fuel,
+  Package,
 } from 'lucide-react'
 
 interface PanelLayoutProps {
@@ -35,6 +36,7 @@ const navItems = [
   { href: '/personeller', label: 'Personeller', icon: Users, adminOnly: true },
   { href: '/araclar', label: 'Araçlar', icon: Truck, adminOnly: true },
   { href: '/akaryakit', label: 'Akaryakıt', icon: Fuel, adminOnly: false },
+  { href: '/depo', label: 'Depo', icon: Package, adminOnly: false },
 ]
 
 export function PanelLayout({ user, children }: PanelLayoutProps) {

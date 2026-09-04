@@ -23,6 +23,7 @@ model User {
   updatedAt   DateTime  @updatedAt
   isKayitlari IsKaydi[]
   akaryakitKayitlari AkaryakitKaydi[]
+  depoHareketleri DepoHareketi[]
 }
 
 model Santiye {
@@ -105,4 +106,39 @@ model IsKaydiFoto {
   isKaydi          IsKaydi  @relation(fields: [isKaydiId], references: [id], onDelete: Cascade)
 
   @@index([isKaydiId])
+}
+
+enum DepoHareketTipi {
+  GIRIS
+  CIKIS
+}
+
+model DepoMalzeme {
+  id          String         @id @default(cuid())
+  ad          String         @unique
+  birim       String
+  stokMiktari Float          @default(0)
+  minStok     Float?
+  aciklama    String?
+  aktif       Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  hareketler  DepoHareketi[]
+}
+
+model DepoHareketi {
+  id        String          @id @default(cuid())
+  tarih     DateTime
+  tip       DepoHareketTipi
+  miktar    Float
+  aciklama  String?
+  malzemeId String
+  userId    String
+  createdAt DateTime        @default(now())
+  malzeme   DepoMalzeme     @relation(fields: [malzemeId], references: [id])
+  user      User            @relation(fields: [userId], references: [id])
+
+  @@index([malzemeId])
+  @@index([tarih])
+  @@index([userId])
 }

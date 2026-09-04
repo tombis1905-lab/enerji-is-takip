@@ -69,6 +69,23 @@ async function main() {
     },
   })
 
+  // Depo - başlangıç malzemeleri (yoksa oluşturulur, stok miktarına dokunulmaz)
+  const depoMalzemeleri = [
+    { ad: 'Kablo', birim: 'metre' },
+    { ad: 'Direk', birim: 'adet' },
+    { ad: 'İzolatör', birim: 'adet' },
+    { ad: 'Kum', birim: 'ton' },
+    { ad: 'Tuğla', birim: 'adet' },
+  ]
+
+  for (const malzeme of depoMalzemeleri) {
+    await prisma.depoMalzeme.upsert({
+      where: { ad: malzeme.ad },
+      update: {},
+      create: malzeme,
+    })
+  }
+
   console.log('Seed completed successfully!')
 }
 
