@@ -113,11 +113,18 @@ function efektifTeminatSuresi(i: Pick<Ihale, 'kesinTeminatSureUzatimi' | 'kesinT
   return i.kesinTeminatSureUzatimi || i.kesinTeminatMektubuSuresi
 }
 
-function hesaplaMali(i: Partial<Ihale>) {
-  const sozlesme = i.sozlesmeBedeli || 0
-  const ekIs = i.ekIsBedeli || 0
+function hesaplaMali(i: Partial<Ihale> | Record<string, any>) {
+  // Form state alanları string olarak tutuluyor (controlled input); burada Number()
+  // ile çeviriyoruz ki "82019700" + "16403940" gibi uç uca ekleme değil, gerçek
+  // toplama yapılsın. Gerçek Ihale nesnelerinde (API'den gelen sayılar) no-op'tur.
+  const num = (v: any) => {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : 0
+  }
+  const sozlesme = num(i.sozlesmeBedeli)
+  const ekIs = num(i.ekIsBedeli)
   const toplamSozlesme = sozlesme + ekIs
-  const toplamHakedis = (i.hakedis1 || 0) + (i.hakedis2 || 0) + (i.hakedis3 || 0) + (i.hakedis4 || 0) + (i.hakedisKesin || 0)
+  const toplamHakedis = num(i.hakedis1) + num(i.hakedis2) + num(i.hakedis3) + num(i.hakedis4) + num(i.hakedisKesin)
   const kalan = toplamSozlesme - toplamHakedis
   const yuzde = toplamSozlesme > 0 ? Math.min(100, Math.max(0, (toplamHakedis / toplamSozlesme) * 100)) : 0
   return { toplamSozlesme, toplamHakedis, kalan, yuzde }
