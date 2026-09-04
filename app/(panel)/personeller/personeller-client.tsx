@@ -1,22 +1,22 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { FadeIn, Stagger, StaggerItem } from '@/components/ui/animate'
-import { Users, Plus, Trash2, Shield, User as UserIcon, ClipboardList, Building2, History, LogOut, X } from 'lucide-react'
+import { Users, Plus, Trash2, Building2, History, LogOut, X, Phone, Pencil, Check } from 'lucide-react'
 import { toast } from 'sonner'
 
-interface Personel {
+interface Calisan {
   id: string
-  email: string
-  name: string
-  role: string
-  createdAt: string
-  _count?: { isKayitlari: number }
+  ad: string
+  telefon: string | null
+  aciklama: string | null
+  aktif: boolean
+  aktifSirketId: string | null
   aktifSirket: string | null
   aktifSirketBaslangic: string | null
 }
@@ -35,28 +35,40 @@ interface GecmisKaydi {
   sirket: { ad: string }
 }
 
+const tarihStr = (t: string | null) => (t ? new Date(t).toLocaleDateString('tr-TR') : '')
+
 export function PersonellerClient() {
-  const [personeller, setPersoneller] = useState<Personel[]>([])
+  const [calisanlar, setCalisanlar] = useState<Calisan[]>([])
+  const [sirketler, setSirketler] = useState<Sirket[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Yeni çalışan ekle
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [form, setForm] = useState({ email: '', password: '', name: '', role: 'PERSONEL' })
+  const [form, setForm] = useState({ ad: '', telefon: '', aciklama: '', sirketId: '', baslangicTarihi: '' })
   const [saving, setSaving] = useState(false)
 
-  // Şirket Geçmişi dialog state
+  // Detay / Şirket Geçmişi dialog
   const [gecmisDialogOpen, setGecmisDialogOpen] = useState(false)
-  const [gecmisPersonel, setGecmisPersonel] = useState<Personel | null>(null)
+  const [gecmisCalisan, setGecmisCalisan] = useState<Calisan | null>(null)
   const [gecmisler, setGecmisler] = useState<GecmisKaydi[]>([])
-  const [sirketler, setSirketler] = useState<Sirket[]>([])
+  const [gecmisSirketler, setGecmisSirketler] = useState<Sirket[]>([])
   const [gecmisLoading, setGecmisLoading] = useState(false)
   const [gecmisSaving, setGecmisSaving] = useState(false)
   const [gecmisForm, setGecmisForm] = useState({ sirketId: '', baslangicTarihi: '', aciklama: '' })
   const [yeniSirketAd, setYeniSirketAd] = useState('')
   const [showYeniSirket, setShowYeniSirket] = useState(false)
+  const [editingAd, setEditingAd] = useState(false)
+  const [editAdDeger, setEditAdDeger] = useState('')
 
   const loadData = useCallback(() => {
-    fetch('/api/personeller')
-      .then(r => r.json())
-      .then(d => setPersoneller(Array.isArray(d) ? d : []))
+    Promise.all([
+      fetch('/api/calisanlar').then(r => r.json()),
+      fetch('/api/sirketler').then(r => r.json()),
+    ])
+      .then(([c, s]) => {
+        setCalisanlar(Array.isArray(c) ? c : [])
+        setSirketler(Array.isArray(s) ? s : [])
+      })
       .catch(() => toast.error('Veriler yüklenemedi'))
       .finally(() => setLoading(false))
   }, [])
@@ -64,63 +76,55 @@ export function PersonellerClient() {
   useEffect(() => { loadData() }, [loadData])
 
   const openNew = () => {
-    setForm({ email: '', password: '', name: '', role: 'PERSONEL' })
+    setForm({ ad: '', telefon: '', aciklama: '', sirketId: '', baslangicTarihi: new Date().toISOString().slice(0, 10) })
     setDialogOpen(true)
   }
 
   const handleSave = async () => {
-    if (!form.email.trim() || !form.password.trim() || !form.name.trim()) {
-      toast.error('Tüm alanları doldurun')
+    if (!form.ad.trim()) {
+      toast.error('Çalışan adı gerekli')
       return
     }
     setSaving(true)
     try {
-      const res = await fetch('/api/personeller', {
+      const res = await fetch('/api/calisanlar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ad: form.ad,
+          telefon: form.telefon,
+          aciklama: form.aciklama,
+          ...(form.sirketId ? { sirketId: form.sirketId, baslangicTarihi: form.baslangicTarihi } : {}),
+        }),
       })
       if (!res.ok) {
         const data = await res.json()
         toast.error(data?.error ?? 'Hata oluştu')
         return
       }
-      toast.success('Personel eklendi')
+      toast.success('Çalışan eklendi')
       setDialogOpen(false)
       loadData()
     } catch { toast.error('Hata oluştu') }
     finally { setSaving(false) }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Bu personeli silmek istediğinize emin misiniz?')) return
-    try {
-      const res = await fetch(`/api/personeller/${id}`, { method: 'DELETE' })
-      if (!res.ok) {
-        const data = await res.json()
-        toast.error(data?.error ?? 'Silinemedi')
-        return
-      }
-      toast.success('Personel silindi')
-      loadData()
-    } catch { toast.error('Hata oluştu') }
-  }
-
-  // --- Şirket Geçmişi ---
-  const openGecmis = async (p: Personel) => {
-    setGecmisPersonel(p)
+  // --- Detay / Şirket Geçmişi ---
+  const openGecmis = async (c: Calisan) => {
+    setGecmisCalisan(c)
     setGecmisDialogOpen(true)
     setGecmisLoading(true)
     setShowYeniSirket(false)
     setYeniSirketAd('')
+    setEditingAd(false)
     const now = new Date().toISOString().slice(0, 10)
     setGecmisForm({ sirketId: '', baslangicTarihi: now, aciklama: '' })
     try {
-      const res = await fetch(`/api/personeller/${p.id}/sirket-gecmisi`)
+      const res = await fetch(`/api/calisanlar/${c.id}/sirket-gecmisi`)
       if (res.ok) {
         const data = await res.json()
         setGecmisler(data.gecmisler)
-        setSirketler(data.sirketler)
+        setGecmisSirketler(data.sirketler)
       }
     } finally {
       setGecmisLoading(false)
@@ -128,24 +132,31 @@ export function PersonellerClient() {
   }
 
   const refreshGecmis = async () => {
-    if (!gecmisPersonel) return
-    const res = await fetch(`/api/personeller/${gecmisPersonel.id}/sirket-gecmisi`)
+    if (!gecmisCalisan) return
+    const res = await fetch(`/api/calisanlar/${gecmisCalisan.id}/sirket-gecmisi`)
     if (res.ok) {
       const data = await res.json()
       setGecmisler(data.gecmisler)
-      setSirketler(data.sirketler)
+      setGecmisSirketler(data.sirketler)
     }
-    loadData()
+    // Güncel çalışan listesini de tazele; açık diyaloğun başlığı da güncellensin
+    const listRes = await fetch('/api/calisanlar')
+    if (listRes.ok) {
+      const list = await listRes.json()
+      setCalisanlar(list)
+      const guncel = list.find((x: Calisan) => x.id === gecmisCalisan.id)
+      if (guncel) setGecmisCalisan(guncel)
+    }
   }
 
   const handleGecmisSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!gecmisPersonel) return
+    if (!gecmisCalisan) return
     if (!gecmisForm.sirketId) { toast.error('Şirket seçiniz'); return }
     if (!gecmisForm.baslangicTarihi) { toast.error('Başlangıç tarihi giriniz'); return }
     setGecmisSaving(true)
     try {
-      const res = await fetch(`/api/personeller/${gecmisPersonel.id}/sirket-gecmisi`, {
+      const res = await fetch(`/api/calisanlar/${gecmisCalisan.id}/sirket-gecmisi`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(gecmisForm),
@@ -163,10 +174,10 @@ export function PersonellerClient() {
   }
 
   const handleAyrilis = async () => {
-    if (!gecmisPersonel) return
-    if (!confirm(`${gecmisPersonel.name} şu an çalıştığı şirketten ayrılsın mı? (Yeni bir şirkete geçmeden kaydı kapatır)`)) return
+    if (!gecmisCalisan) return
+    if (!confirm(`${gecmisCalisan.ad} şu an çalıştığı şirketten ayrılsın mı?`)) return
     try {
-      const res = await fetch(`/api/personeller/${gecmisPersonel.id}/sirket-gecmisi/ayrilis`, {
+      const res = await fetch(`/api/calisanlar/${gecmisCalisan.id}/sirket-gecmisi/ayrilis`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tarih: new Date().toISOString().slice(0, 10) }),
@@ -182,10 +193,10 @@ export function PersonellerClient() {
   }
 
   const handleGecmisDelete = async (gecmisId: string) => {
-    if (!gecmisPersonel) return
+    if (!gecmisCalisan) return
     if (!confirm('Bu kaydı silmek istediğinize emin misiniz?')) return
     try {
-      const res = await fetch(`/api/personeller/${gecmisPersonel.id}/sirket-gecmisi/${gecmisId}`, { method: 'DELETE' })
+      const res = await fetch(`/api/calisanlar/${gecmisCalisan.id}/sirket-gecmisi/${gecmisId}`, { method: 'DELETE' })
       if (!res.ok) {
         toast.error('Silinemedi')
         return
@@ -209,6 +220,7 @@ export function PersonellerClient() {
         return
       }
       const yeni = await res.json()
+      setGecmisSirketler((prev) => [...prev, yeni].sort((a, b) => a.ad.localeCompare(b.ad)))
       setSirketler((prev) => [...prev, yeni].sort((a, b) => a.ad.localeCompare(b.ad)))
       setGecmisForm((f) => ({ ...f, sirketId: yeni.id }))
       setYeniSirketAd('')
@@ -217,136 +229,181 @@ export function PersonellerClient() {
     } catch { toast.error('Hata oluştu') }
   }
 
+  const handleAdKaydet = async () => {
+    if (!gecmisCalisan || !editAdDeger.trim()) return
+    try {
+      const res = await fetch(`/api/calisanlar/${gecmisCalisan.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ad: editAdDeger.trim() }),
+      })
+      if (!res.ok) { toast.error('Güncellenemedi'); return }
+      toast.success('İsim güncellendi')
+      setEditingAd(false)
+      refreshGecmis()
+    } catch { toast.error('Hata oluştu') }
+  }
+
+  const handleCalisanDelete = async () => {
+    if (!gecmisCalisan) return
+    if (!confirm(`${gecmisCalisan.ad} kaydını tamamen silmek istediğinize emin misiniz?`)) return
+    try {
+      const res = await fetch(`/api/calisanlar/${gecmisCalisan.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json()
+        toast.error(data?.error ?? 'Silinemedi')
+        return
+      }
+      toast.success('Çalışan silindi')
+      setGecmisDialogOpen(false)
+      loadData()
+    } catch { toast.error('Hata oluştu') }
+  }
+
+  const sirketteOlmayanlar = calisanlar.filter((c) => !c.aktifSirketId)
+
   return (
     <div className="space-y-6">
       <FadeIn>
         <div className="flex items-center justify-between">
           <div>
             <h1 className="font-display text-2xl font-bold tracking-tight">Personeller</h1>
-            <p className="text-muted-foreground text-sm mt-1">Kullanıcı, personel ve şirket geçmişi yönetimi</p>
+            <p className="text-muted-foreground text-sm mt-1">Şirket bazlı çalışan listesi ve geçmişi</p>
           </div>
           <Button onClick={openNew} className="bg-secondary text-secondary-foreground hover:bg-secondary/90">
-            <Plus className="h-4 w-4 mr-2" /> Personel Ekle
+            <Plus className="h-4 w-4 mr-2" /> Çalışan Ekle
           </Button>
         </div>
       </FadeIn>
 
       {loading ? (
         <div className="space-y-3">
-          {[1,2,3].map(i => <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />)}
+          {[1, 2, 3].map(i => <div key={i} className="h-32 bg-muted animate-pulse rounded-lg" />)}
         </div>
-      ) : (personeller?.length ?? 0) === 0 ? (
+      ) : sirketler.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
-            <Users className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-            <p className="text-muted-foreground">Henüz personel eklenmemiş.</p>
+            <Building2 className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+            <p className="text-muted-foreground">Henüz şirket eklenmemiş.</p>
           </CardContent>
         </Card>
       ) : (
-        <Stagger className="space-y-3" staggerDelay={0.05}>
-          {(personeller ?? []).map((p: Personel) => (
-            <StaggerItem key={p.id}>
-              <Card className="group hover:shadow-md transition-shadow">
-                <CardContent className="p-4 flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
-                    {(p?.name ?? '?')?.[0]?.toUpperCase() ?? '?'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-semibold">{p.name}</p>
-                      {p.role === 'ADMIN' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary/10 text-secondary text-xs font-medium">
-                          <Shield className="h-3 w-3" /> Yönetici
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
-                          <UserIcon className="h-3 w-3" /> Personel
-                        </span>
-                      )}
-                      {p.aktifSirket ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs font-medium">
-                          <Building2 className="h-3 w-3" /> {p.aktifSirket}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-xs font-medium">
-                          <Building2 className="h-3 w-3" /> Şirkette değil
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-muted-foreground">Kullanıcı adı: {p.email}</p>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                      <ClipboardList className="h-3 w-3" /> {p._count?.isKayitlari ?? 0} kayıt
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => openGecmis(p)}
-                    className="shrink-0"
-                  >
-                    <History className="h-3.5 w-3.5 mr-1" /> Şirket Geçmişi
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => handleDelete(p.id)}
-                    className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </CardContent>
-              </Card>
-            </StaggerItem>
-          ))}
+        <Stagger className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" staggerDelay={0.05}>
+          {sirketler.map((s) => {
+            const bunlar = calisanlar.filter((c) => c.aktifSirketId === s.id)
+            return (
+              <StaggerItem key={s.id}>
+                <Card className="h-full">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        <Building2 className="h-4 w-4 text-secondary" /> {s.ad}
+                      </span>
+                      <span className="text-xs font-normal text-muted-foreground">{bunlar.length} kişi</span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-1">
+                    {bunlar.length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-3 text-center">Bu şirkette kimse yok</p>
+                    ) : (
+                      bunlar.map((c) => (
+                        <button
+                          key={c.id}
+                          onClick={() => openGecmis(c)}
+                          className="w-full flex items-center justify-between gap-2 rounded-md px-2 py-2 text-left hover:bg-muted/50 transition-colors"
+                        >
+                          <span className="font-medium truncate">{c.ad}</span>
+                          <span className="text-xs text-muted-foreground shrink-0">{tarihStr(c.aktifSirketBaslangic)} tarihinden beri</span>
+                        </button>
+                      ))
+                    )}
+                  </CardContent>
+                </Card>
+              </StaggerItem>
+            )
+          })}
         </Stagger>
       )}
 
-      {/* Yeni Personel Ekle */}
+      {/* Şirkette olmayanlar */}
+      {!loading && sirketteOlmayanlar.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Users className="h-4 w-4 text-muted-foreground" /> Şu An Hiçbir Şirkette Olmayanlar
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            {sirketteOlmayanlar.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => openGecmis(c)}
+                className="w-full flex items-center justify-between gap-2 rounded-md px-2 py-2 text-left hover:bg-muted/50 transition-colors"
+              >
+                <span className="font-medium truncate">{c.ad}</span>
+                {c.telefon && <span className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" /> {c.telefon}</span>}
+              </button>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {!loading && calisanlar.length === 0 && (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Users className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+            <p className="text-muted-foreground">Henüz çalışan eklenmemiş.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Yeni Çalışan Ekle */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Yeni Personel Ekle</DialogTitle>
+            <DialogTitle>Yeni Çalışan Ekle</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>İsim Soyisim *</Label>
               <Input
-                value={form.name}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, name: e.target.value }))}
+                value={form.ad}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, ad: e.target.value }))}
                 placeholder="Ad Soyad"
               />
             </div>
             <div className="space-y-2">
-              <Label>Kullanıcı Adı *</Label>
+              <Label>Telefon</Label>
               <Input
-                value={form.email}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, email: e.target.value.toLowerCase() }))}
-                placeholder="Giriş için kullanıcı adı"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-              />
-              <p className="text-xs text-muted-foreground">Kullanıcı adları küçük harfe çevrilir. Personel bu adı ve şifreyi girerek giriş yapar.</p>
-            </div>
-            <div className="space-y-2">
-              <Label>Şifre *</Label>
-              <Input
-                type="password"
-                value={form.password}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, password: e.target.value }))}
-                placeholder="Giriş şifresi"
+                value={form.telefon}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, telefon: e.target.value }))}
+                placeholder="Opsiyonel"
               />
             </div>
-            <div className="space-y-2">
-              <Label>Rol</Label>
-              <select
-                value={form.role}
-                onChange={(e) => setForm(p => ({ ...p, role: e.target.value }))}
-                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="PERSONEL">Personel</option>
-                <option value="ADMIN">Yönetici</option>
-              </select>
+            <div className="grid grid-cols-2 gap-3 border-t pt-3">
+              <div className="col-span-2">
+                <Label className="text-xs">Şirket (opsiyonel — hemen atamak isterseniz)</Label>
+                <select
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  value={form.sirketId}
+                  onChange={(e) => setForm(p => ({ ...p, sirketId: e.target.value }))}
+                >
+                  <option value="">Henüz atama yapma</option>
+                  {sirketler.map((s) => (
+                    <option key={s.id} value={s.id}>{s.ad}</option>
+                  ))}
+                </select>
+              </div>
+              {form.sirketId && (
+                <div className="col-span-2">
+                  <Label className="text-xs">Başlangıç Tarihi</Label>
+                  <Input
+                    type="date"
+                    value={form.baslangicTarihi}
+                    onChange={(e) => setForm(p => ({ ...p, baslangicTarihi: e.target.value }))}
+                  />
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>
@@ -358,12 +415,31 @@ export function PersonellerClient() {
         </DialogContent>
       </Dialog>
 
-      {/* Şirket Geçmişi */}
+      {/* Çalışan Detay / Şirket Geçmişi */}
       <Dialog open={gecmisDialogOpen} onOpenChange={setGecmisDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-secondary" /> {gecmisPersonel?.name} — Şirket Geçmişi
+              {editingAd ? (
+                <div className="flex items-center gap-2 w-full">
+                  <Input value={editAdDeger} onChange={(e) => setEditAdDeger(e.target.value)} className="h-8" />
+                  <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={handleAdKaydet}>
+                    <Check className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  {gecmisCalisan?.ad}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 shrink-0"
+                    onClick={() => { setEditingAd(true); setEditAdDeger(gecmisCalisan?.ad ?? '') }}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                </>
+              )}
             </DialogTitle>
           </DialogHeader>
 
@@ -376,10 +452,10 @@ export function PersonellerClient() {
                 <div>
                   <p className="text-xs text-muted-foreground">Şu anki şirket</p>
                   <p className="font-semibold">
-                    {gecmisPersonel?.aktifSirket ?? 'Hiçbir şirkette değil'}
+                    {gecmisCalisan?.aktifSirket ?? 'Hiçbir şirkette değil'}
                   </p>
                 </div>
-                {gecmisPersonel?.aktifSirket && (
+                {gecmisCalisan?.aktifSirket && (
                   <Button variant="outline" size="sm" onClick={handleAyrilis}>
                     <LogOut className="h-3.5 w-3.5 mr-1" /> Ayrıldı
                   </Button>
@@ -396,8 +472,8 @@ export function PersonellerClient() {
                       <div>
                         <span className="font-medium">{g.sirket.ad}</span>
                         <span className="text-muted-foreground ml-2">
-                          {new Date(g.baslangicTarihi).toLocaleDateString('tr-TR')} —{' '}
-                          {g.bitisTarihi ? new Date(g.bitisTarihi).toLocaleDateString('tr-TR') : 'Devam ediyor'}
+                          {tarihStr(g.baslangicTarihi)} —{' '}
+                          {g.bitisTarihi ? tarihStr(g.bitisTarihi) : 'Devam ediyor'}
                         </span>
                         {g.aciklama && <p className="text-xs text-muted-foreground">{g.aciklama}</p>}
                       </div>
@@ -411,7 +487,7 @@ export function PersonellerClient() {
 
               {/* Yeni geçiş formu */}
               <form onSubmit={handleGecmisSubmit} className="space-y-3 border-t pt-4">
-                <p className="text-sm font-semibold">Yeni Şirkete Geçiş Ekle</p>
+                <p className="text-sm font-semibold flex items-center gap-1.5"><History className="h-3.5 w-3.5" /> Yeni Şirkete Geçiş Ekle</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2 sm:col-span-1">
                     <Label className="text-xs">Şirket *</Label>
@@ -422,7 +498,7 @@ export function PersonellerClient() {
                       required
                     >
                       <option value="">Şirket seçin</option>
-                      {sirketler.map((s) => (
+                      {gecmisSirketler.map((s) => (
                         <option key={s.id} value={s.id}>{s.ad}</option>
                       ))}
                     </select>
@@ -476,7 +552,10 @@ export function PersonellerClient() {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="flex items-center sm:justify-between">
+            <Button variant="ghost" size="sm" onClick={handleCalisanDelete} className="text-destructive hover:text-destructive">
+              <Trash2 className="h-3.5 w-3.5 mr-1" /> Çalışanı Sil
+            </Button>
             <Button variant="outline" onClick={() => setGecmisDialogOpen(false)}>Kapat</Button>
           </DialogFooter>
         </DialogContent>

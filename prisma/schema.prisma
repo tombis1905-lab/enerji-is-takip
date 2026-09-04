@@ -24,7 +24,6 @@ model User {
   isKayitlari IsKaydi[]
   akaryakitKayitlari AkaryakitKaydi[]
   depoHareketleri DepoHareketi[]
-  sirketGecmisi PersonelSirket[]
 }
 
 model Santiye {
@@ -152,19 +151,33 @@ model Sirket {
   personelSirketleri PersonelSirket[]
 }
 
+// Şantiyede fiilen çalışan personel (isim listesi). Uygulamaya giriş yapan
+// kullanıcı hesaplarından (User) bağımsızdır — şifre gerekmez, sadece
+// hangi şirkette ne zaman çalıştıklarını takip etmek içindir.
+model Calisan {
+  id            String           @id @default(cuid())
+  ad            String
+  telefon       String?
+  aciklama      String?
+  aktif         Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  sirketGecmisi PersonelSirket[]
+}
+
 model PersonelSirket {
   id              String    @id @default(cuid())
-  personelId      String
+  calisanId       String
   sirketId        String
   baslangicTarihi DateTime
   bitisTarihi     DateTime?
   aciklama        String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-  personel        User      @relation(fields: [personelId], references: [id], onDelete: Cascade)
+  calisan         Calisan   @relation(fields: [calisanId], references: [id], onDelete: Cascade)
   sirket          Sirket    @relation(fields: [sirketId], references: [id])
 
-  @@index([personelId])
+  @@index([calisanId])
   @@index([sirketId])
   @@index([bitisTarihi])
 }

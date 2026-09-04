@@ -22,24 +22,10 @@ export async function GET() {
         role: true,
         createdAt: true,
         _count: { select: { isKayitlari: true } },
-        sirketGecmisi: {
-          where: { bitisTarihi: null },
-          select: { sirket: { select: { ad: true } }, baslangicTarihi: true },
-          take: 1,
-        },
       },
     })
 
-    const sonuc = personeller.map((p) => {
-      const { sirketGecmisi, ...rest } = p
-      return {
-        ...rest,
-        aktifSirket: sirketGecmisi[0]?.sirket.ad ?? null,
-        aktifSirketBaslangic: sirketGecmisi[0]?.baslangicTarihi ?? null,
-      }
-    })
-
-    return NextResponse.json(sonuc)
+    return NextResponse.json(personeller)
   } catch (error: any) {
     console.error("Personel list error:", error)
     return NextResponse.json({ error: "Veri alınamadı" }, { status: 500 })
