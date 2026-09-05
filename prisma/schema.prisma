@@ -151,6 +151,45 @@ model Sirket {
   aktif              Boolean           @default(true)
   createdAt          DateTime          @default(now())
   personelSirketleri PersonelSirket[]
+  cekler             Cek[]
+}
+
+enum CekTuru {
+  ALINAN
+  VERILEN
+}
+
+enum CekDurumu {
+  BEKLEMEDE
+  TAHSIL_EDILDI
+  CIRO_EDILDI
+  KARSILIKSIZ
+  IPTAL
+}
+
+// Çek takibi: sadece Yönetici + ek PIN ile açılan ayrı "Çekler" bölümü.
+// Alınan (müşteriden) ve verilen (tedarikçiye) çekler tek tabloda, tür alanıyla ayrılır.
+model Cek {
+  id              String     @id @default(cuid())
+  tur             CekTuru
+  cekNo           String?
+  banka           String?
+  sube            String?
+  karsiTaraf      String?
+  tutar           Float
+  vadeTarihi      DateTime
+  duzenlemeTarihi DateTime?
+  durum           CekDurumu  @default(BEKLEMEDE)
+  sirketId        String?
+  sirket          Sirket?    @relation(fields: [sirketId], references: [id])
+  aciklama        String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([vadeTarihi])
+  @@index([durum])
+  @@index([tur])
+  @@index([sirketId])
 }
 
 // Şantiyede fiilen çalışan personel (isim listesi). Uygulamaya giriş yapan
