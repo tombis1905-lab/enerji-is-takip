@@ -22,6 +22,7 @@ import {
   Package,
   Gavel,
   FileCheck2,
+  Receipt,
 } from 'lucide-react'
 
 interface PanelLayoutProps {
@@ -41,6 +42,7 @@ const navItems = [
   { href: '/depo', label: 'Depo', icon: Package, adminOnly: false },
   { href: '/ihaleler', label: 'İhaleler', icon: Gavel, adminOnly: true },
   { href: '/cekler', label: 'Çekler', icon: FileCheck2, adminOnly: true },
+  { href: '/faturalar', label: 'Faturalar', icon: Receipt, adminOnly: true },
 ]
 
 export function PanelLayout({ user, children }: PanelLayoutProps) {

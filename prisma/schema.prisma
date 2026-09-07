@@ -152,6 +152,7 @@ model Sirket {
   createdAt          DateTime          @default(now())
   personelSirketleri PersonelSirket[]
   cekler             Cek[]
+  faturalar          Fatura[]
 }
 
 enum CekTuru {
@@ -272,4 +273,47 @@ model PersonelSirket {
   @@index([calisanId])
   @@index([sirketId])
   @@index([bitisTarihi])
+}
+
+enum FaturaTuru {
+  KESILEN
+  ALINAN
+}
+
+enum FaturaOdemeDurumu {
+  BEKLIYOR
+  ODENDI
+  GECIKTI
+}
+
+// Fatura takibi: sadece Yönetici + ek PIN ile açılan ayrı "Faturalar" bölümü
+// (Çekler ile aynı PIN'i kullanır). Kestiğimiz (KESILEN) ve aldığımız (ALINAN)
+// faturalar tek tabloda, tür alanıyla ayrılır. PDF nüshası isteğe bağlı olarak
+// yerel diskte (Railway Volume) saklanır, yolu pdfYolu alanında tutulur.
+model Fatura {
+  id              String            @id @default(cuid())
+  tur             FaturaTuru
+  faturaNo        String?
+  tarih           DateTime
+  aciklama        String?
+  karsiTaraf      String?
+  tutar           Float
+  kdvOrani        Float             @default(20)
+  kdvTutari       Float
+  kdvDahilTutar   Float
+  tevkifatTutari  Float?
+  vadeTarihi      DateTime?
+  odemeDurumu     FaturaOdemeDurumu @default(BEKLIYOR)
+  sirketId        String?
+  sirket          Sirket?           @relation(fields: [sirketId], references: [id])
+  pdfYolu         String?
+  pdfDosyaAdi     String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([tarih])
+  @@index([vadeTarihi])
+  @@index([odemeDurumu])
+  @@index([tur])
+  @@index([sirketId])
 }
