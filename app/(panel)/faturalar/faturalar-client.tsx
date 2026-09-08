@@ -7,11 +7,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   Lock, Receipt, Plus, Pencil, Trash2, Download, AlertTriangle,
   ArrowDownCircle, ArrowUpCircle, LockKeyhole, Upload, FileText, Paperclip,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import { HaftalikOdemelerClient } from './haftalik-odemeler-client'
 
 interface Sirket { id: string; ad: string }
 
@@ -33,6 +35,9 @@ interface Fatura {
   sirket: { ad: string } | null
   pdfYolu: string | null
   pdfDosyaAdi: string | null
+  odemeTarihi: string | null
+  ibanBilgisi: string | null
+  yuklenici: string | null
 }
 
 const EMPTY_FORM = {
@@ -40,6 +45,7 @@ const EMPTY_FORM = {
   faturaNo: '', tarih: '', aciklama: '', karsiTaraf: '',
   tutar: '', kdvOrani: '20', kdvDahilTutar: '', tevkifatTutari: '',
   vadeTarihi: '', odemeDurumu: 'BEKLIYOR' as Fatura['odemeDurumu'], sirketId: '',
+  odemeTarihi: '', ibanBilgisi: '', yuklenici: '',
 }
 
 const DURUM_LABEL: Record<Fatura['odemeDurumu'], string> = {
@@ -245,6 +251,8 @@ export function FaturalarClient() {
       kdvDahilTutar: f.kdvDahilTutar.toString(), tevkifatTutari: f.tevkifatTutari?.toString() || '',
       vadeTarihi: f.vadeTarihi ? f.vadeTarihi.slice(0, 10) : '',
       odemeDurumu: f.odemeDurumu, sirketId: f.sirketId || '',
+      odemeTarihi: f.odemeTarihi ? f.odemeTarihi.slice(0, 10) : '',
+      ibanBilgisi: f.ibanBilgisi || '', yuklenici: f.yuklenici || '',
     })
     setEditId(f.id)
     setShowForm(true)
@@ -361,21 +369,29 @@ export function FaturalarClient() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold font-display">Faturalar</h2>
-          <p className="text-muted-foreground text-sm">Kestiğimiz ve aldığımız faturaların takibi</p>
+          <p className="text-muted-foreground text-sm">Kestiğimiz ve aldığımız faturaların, haftalık ödemelerin takibi</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleLock} title="Bölümü kilitle">
-            <LockKeyhole className="h-4 w-4 mr-1" /> Kilitle
+        <Button variant="outline" size="sm" onClick={handleLock} title="Bölümü kilitle">
+          <LockKeyhole className="h-4 w-4 mr-1" /> Kilitle
+        </Button>
+      </div>
+
+      <Tabs defaultValue="faturalar">
+        <TabsList>
+          <TabsTrigger value="faturalar">Faturalar</TabsTrigger>
+          <TabsTrigger value="haftalik">Haftalık Ödemeler</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="faturalar" className="space-y-6">
+      <div className="flex items-center justify-end flex-wrap gap-2">
+        {faturalar.length > 0 && (
+          <Button variant="outline" size="sm" onClick={handleExcelExport}>
+            <Download className="h-4 w-4 mr-1" /> Excel
           </Button>
-          {faturalar.length > 0 && (
-            <Button variant="outline" size="sm" onClick={handleExcelExport}>
-              <Download className="h-4 w-4 mr-1" /> Excel
-            </Button>
-          )}
-          <Button onClick={() => { resetForm(); setShowForm(true) }} className="bg-secondary hover:bg-secondary/90" size="sm">
-            <Plus className="h-4 w-4 mr-1" /> Yeni Fatura
-          </Button>
-        </div>
+        )}
+        <Button onClick={() => { resetForm(); setShowForm(true) }} className="bg-secondary hover:bg-secondary/90" size="sm">
+          <Plus className="h-4 w-4 mr-1" /> Yeni Fatura
+        </Button>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -481,6 +497,22 @@ export function FaturalarClient() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t">
+                <div>
+                  <Label>Ödeme Tarihi</Label>
+                  <Input type="date" value={form.odemeTarihi} onChange={(e) => set('odemeTarihi')(e.target.value)} />
+                  <p className="text-xs text-muted-foreground mt-1">Girilirse Haftalık Ödemeler'de kendi haftasına düşer.</p>
+                </div>
+                <div>
+                  <Label>IBAN Bilgisi</Label>
+                  <Input value={form.ibanBilgisi} onChange={(e) => set('ibanBilgisi')(e.target.value)} placeholder="TR.. ..." />
+                </div>
+                <div>
+                  <Label>Yüklenici</Label>
+                  <Input value={form.yuklenici} onChange={(e) => set('yuklenici')(e.target.value)} placeholder="İşi yapan taşeron/yüklenici" />
+                </div>
+              </div>
+
               <div>
                 <Label>Açıklama</Label>
                 <Textarea value={form.aciklama} onChange={(e) => set('aciklama')(e.target.value)} rows={2} />
@@ -564,6 +596,12 @@ export function FaturalarClient() {
           ))}
         </div>
       )}
+        </TabsContent>
+
+        <TabsContent value="haftalik">
+          <HaftalikOdemelerClient faturalar={faturalar} sirketler={sirketler} />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={!!detay} onOpenChange={(open) => { if (!open) setDetay(null) }}>
         <DialogContent>
@@ -588,6 +626,9 @@ export function FaturalarClient() {
                   <div>KDV ({detay.kdvOrani}%)</div><div className="text-right text-foreground">{paraStr(detay.kdvTutari)}</div>
                   <div>KDV Dahil Tutar</div><div className="text-right text-foreground font-medium">{paraStr(detay.kdvDahilTutar)}</div>
                   {detay.tevkifatTutari != null && (<><div>Tevkifat</div><div className="text-right text-foreground">{paraStr(detay.tevkifatTutari)}</div></>)}
+                  {detay.odemeTarihi && (<><div>Ödeme Tarihi</div><div className="text-right text-foreground">{tarihStr(detay.odemeTarihi)}</div></>)}
+                  {detay.ibanBilgisi && (<><div>IBAN Bilgisi</div><div className="text-right text-foreground">{detay.ibanBilgisi}</div></>)}
+                  {detay.yuklenici && (<><div>Yüklenici</div><div className="text-right text-foreground">{detay.yuklenici}</div></>)}
                 </div>
                 {detay.aciklama && (
                   <div>

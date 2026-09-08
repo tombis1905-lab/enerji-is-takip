@@ -153,6 +153,7 @@ model Sirket {
   personelSirketleri PersonelSirket[]
   cekler             Cek[]
   faturalar          Fatura[]
+  haftalikOdemeler   HaftalikOdeme[]
 }
 
 enum CekTuru {
@@ -308,6 +309,13 @@ model Fatura {
   sirket          Sirket?           @relation(fields: [sirketId], references: [id])
   pdfYolu         String?
   pdfDosyaAdi     String?
+  // Haftalık Ödemeler görünümü için: gerçek ödeme tarihi, ödemenin yapıldığı
+  // IBAN bilgisi ve işi yapan yüklenici/taşeron adı. Üçü de opsiyonel — dolu
+  // olan aldığımız (ALINAN) faturalar otomatik olarak haftalık ödemeler
+  // tablosunda kendi haftasına düşer.
+  odemeTarihi     DateTime?
+  ibanBilgisi     String?
+  yuklenici       String?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
@@ -315,5 +323,27 @@ model Fatura {
   @@index([vadeTarihi])
   @@index([odemeDurumu])
   @@index([tur])
+  @@index([sirketId])
+}
+
+// Haftalık Ödemeler görünümünde faturaya bağlı olmadan elle girilen ödeme
+// kalemleri (ör. personele elden verilen haftalık harcama, fatura kesilmeyen
+// nakliye/hizmet bedeli). Faturalar sekmesindeki ALINAN faturalarla birlikte,
+// şirket + hafta bazında gruplanarak gösterilir.
+model HaftalikOdeme {
+  id            String    @id @default(cuid())
+  tarih         DateTime
+  odemeTarihi   DateTime?
+  yapilanIs     String
+  firma         String?
+  ibanBilgisi   String?
+  tutar         Float
+  yuklenici     String?
+  sirketId      String
+  sirket        Sirket    @relation(fields: [sirketId], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tarih])
   @@index([sirketId])
 }

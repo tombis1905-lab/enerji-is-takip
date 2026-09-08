@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
   const {
     tur, faturaNo, tarih, aciklama, karsiTaraf, tutar, kdvOrani,
     kdvDahilTutar, tevkifatTutari, vadeTarihi, odemeDurumu, sirketId,
+    odemeTarihi, ibanBilgisi, yuklenici,
   } = body
 
   if (!tur || (tur !== 'KESILEN' && tur !== 'ALINAN')) {
@@ -78,6 +79,9 @@ export async function POST(req: NextRequest) {
         vadeTarihi: vadeTarihi ? new Date(vadeTarihi) : null,
         odemeDurumu: odemeDurumu || 'BEKLIYOR',
         sirketId: sirketId || null,
+        odemeTarihi: odemeTarihi ? new Date(odemeTarihi) : null,
+        ibanBilgisi: ibanBilgisi?.trim() || null,
+        yuklenici: yuklenici?.trim() || null,
       },
     })
     return NextResponse.json(fatura, { status: 201 })

@@ -38,6 +38,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const {
     tur, faturaNo, tarih, aciklama, karsiTaraf, tutar, kdvOrani,
     kdvDahilTutar, tevkifatTutari, vadeTarihi, odemeDurumu, sirketId,
+    odemeTarihi, ibanBilgisi, yuklenici,
   } = body
 
   const data: any = {}
@@ -49,6 +50,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (vadeTarihi !== undefined) data.vadeTarihi = vadeTarihi ? new Date(vadeTarihi) : null
   if (odemeDurumu !== undefined) data.odemeDurumu = odemeDurumu
   if (sirketId !== undefined) data.sirketId = sirketId || null
+  if (odemeTarihi !== undefined) data.odemeTarihi = odemeTarihi ? new Date(odemeTarihi) : null
+  if (ibanBilgisi !== undefined) data.ibanBilgisi = ibanBilgisi?.trim() || null
+  if (yuklenici !== undefined) data.yuklenici = yuklenici?.trim() || null
   if (tevkifatTutari !== undefined) data.tevkifatTutari = tevkifatTutari !== '' ? Number(tevkifatTutari) : null
 
   // Tutar veya KDV oranı değiştiyse KDV'yi yeniden hesapla
