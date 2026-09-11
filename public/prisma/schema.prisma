@@ -1,0 +1,447 @@
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  PERSONEL
+}
+
+model User {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  password    String
+  name        String
+  role        Role      @default(PERSONEL)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  isKayitlari IsKaydi[]
+  akaryakitKayitlari AkaryakitKaydi[]
+  depoHareketleri DepoHareketi[]
+}
+
+model Santiye {
+  id          String    @id @default(cuid())
+  ad          String
+  konum       String?
+  aktif       Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  isKayitlari IsKaydi[]
+
+  projeMalzemeleri   ProjeMalzeme[]
+  projeAraclar       ProjeArac[]
+  projeAracGunleri   ProjeAracGun[]
+  projeMaliyetOzeti  ProjeMaliyetOzet?
+}
+
+model IsTuru {
+  id          String    @id @default(cuid())
+  ad          String    @unique
+  birim       String
+  aktif       Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  isKayitlari IsKaydi[]
+}
+
+model IsKaydi {
+  id          String        @id @default(cuid())
+  tarih       DateTime
+  miktar      Float
+  aciklama    String?
+  userId      String
+  santiyeId   String
+  isTuruId    String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  user        User          @relation(fields: [userId], references: [id])
+  santiye     Santiye       @relation(fields: [santiyeId], references: [id])
+  isTuru      IsTuru        @relation(fields: [isTuruId], references: [id])
+  fotograflar IsKaydiFoto[]
+
+  @@index([userId])
+  @@index([santiyeId])
+  @@index([tarih])
+  @@index([isTuruId])
+}
+
+model Arac {
+  id          String    @id @default(cuid())
+  plaka       String    @unique
+  isim        String?
+  marka       String?
+  model       String?
+  aktif       Boolean   @default(true)
+  sigortaBitisTarihi DateTime?
+  muayeneBitisTarihi DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  akaryakitKayitlari AkaryakitKaydi[]
+
+  projeAraclar     ProjeArac[]
+  projeAracGunleri ProjeAracGun[]
+}
+
+model AkaryakitKaydi {
+  id          String    @id @default(cuid())
+  tarih       DateTime
+  tutar       Float
+  fisNo       String?
+  aciklama    String?
+  aracId      String
+  userId      String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  arac        Arac      @relation(fields: [aracId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@index([aracId])
+  @@index([tarih])
+  @@index([userId])
+}
+
+model IsKaydiFoto {
+  id               String   @id @default(cuid())
+  cloudStoragePath String
+  isPublic         Boolean  @default(true)
+  contentType      String   @default("image/jpeg")
+  isKaydiId        String
+  createdAt        DateTime @default(now())
+  isKaydi          IsKaydi  @relation(fields: [isKaydiId], references: [id], onDelete: Cascade)
+
+  @@index([isKaydiId])
+}
+
+enum DepoHareketTipi {
+  GIRIS
+  CIKIS
+}
+
+model DepoMalzeme {
+  id          String         @id @default(cuid())
+  ad          String         @unique
+  birim       String
+  stokMiktari Float          @default(0)
+  minStok     Float?
+  aciklama    String?
+  aktif       Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  hareketler  DepoHareketi[]
+}
+
+model DepoHareketi {
+  id        String          @id @default(cuid())
+  tarih     DateTime
+  tip       DepoHareketTipi
+  miktar    Float
+  aciklama  String?
+  malzemeId String
+  userId    String
+  createdAt DateTime        @default(now())
+  malzeme   DepoMalzeme     @relation(fields: [malzemeId], references: [id])
+  user      User            @relation(fields: [userId], references: [id])
+
+  @@index([malzemeId])
+  @@index([tarih])
+  @@index([userId])
+}
+
+model Sirket {
+  id                 String            @id @default(cuid())
+  ad                 String            @unique
+  aktif              Boolean           @default(true)
+  createdAt          DateTime          @default(now())
+  personelSirketleri PersonelSirket[]
+  cekler             Cek[]
+  faturalar          Fatura[]
+  haftalikOdemeler   HaftalikOdeme[]
+}
+
+enum CekTuru {
+  ALINAN
+  VERILEN
+}
+
+enum CekDurumu {
+  BEKLEMEDE
+  TAHSIL_EDILDI
+  CIRO_EDILDI
+  KARSILIKSIZ
+  IPTAL
+}
+
+// Çek takibi: sadece Yönetici + ek PIN ile açılan ayrı "Çekler" bölümü.
+// Alınan (müşteriden) ve verilen (tedarikçiye) çekler tek tabloda, tür alanıyla ayrılır.
+model Cek {
+  id              String     @id @default(cuid())
+  tur             CekTuru
+  cekNo           String?
+  banka           String?
+  sube            String?
+  karsiTaraf      String?
+  tutar           Float
+  vadeTarihi      DateTime
+  duzenlemeTarihi DateTime?
+  durum           CekDurumu  @default(BEKLEMEDE)
+  sirketId        String?
+  sirket          Sirket?    @relation(fields: [sirketId], references: [id])
+  aciklama        String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([vadeTarihi])
+  @@index([durum])
+  @@index([tur])
+  @@index([sirketId])
+}
+
+// Şantiyede fiilen çalışan personel (isim listesi). Uygulamaya giriş yapan
+// kullanıcı hesaplarından (User) bağımsızdır — şifre gerekmez, sadece
+// hangi şirkette ne zaman çalıştıklarını takip etmek içindir.
+model Calisan {
+  id            String           @id @default(cuid())
+  ad            String
+  telefon       String?
+  aciklama      String?
+  aktif         Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  sirketGecmisi PersonelSirket[]
+}
+
+// İhale/proje portföy takibi (Çevre Şehircilik ve benzeri kurumlardan alınan
+// işler): mali bilgiler, takvim, kesin teminat mektubu ve hakediş takibi.
+model Ihale {
+  id            String    @id @default(cuid())
+  isAdi         String
+  kurum         String
+  ihaleKayitNo  String?
+  ihaleGrupNo   String?
+  projeNumarasi String?
+
+  yaklasikMaliyet Float?
+  sozlesmeBedeli  Float?
+  ekIsBedeli      Float?
+
+  ihaleTarihi           DateTime?
+  sozlesmeTarihi        DateTime?
+  yerTeslimTarihi       DateTime?
+  sozlesmeSuresiGun     Int?
+  isBitimTarihi         DateTime?
+  isBitimTarihiRevize   DateTime?
+  sureUzatimBitisTarihi DateTime?
+
+  geciciKabulTarihi  DateTime?
+  geciciKabulSayisi  String?
+  kesinKabulTarihi   DateTime?
+  kesinKabulSayisi   String?
+  ilisiksizlikTarihi DateTime?
+  ilisiksizlikSayisi String?
+
+  kesinTeminatMektubu1      Float?
+  kesinTeminatMektubu2      Float?
+  kesinTeminatMektubuSuresi DateTime?
+  kesinTeminatSureUzatimi   DateTime?
+
+  hakedis1     Float?
+  hakedis2     Float?
+  hakedis3     Float?
+  hakedis4     Float?
+  hakedisKesin Float?
+
+  tedasKirimOrani Float?
+
+  aciklama  String?
+  aktif     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([aktif])
+  @@index([isBitimTarihi])
+}
+
+model PersonelSirket {
+  id              String    @id @default(cuid())
+  calisanId       String
+  sirketId        String
+  baslangicTarihi DateTime
+  bitisTarihi     DateTime?
+  aciklama        String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  calisan         Calisan   @relation(fields: [calisanId], references: [id], onDelete: Cascade)
+  sirket          Sirket    @relation(fields: [sirketId], references: [id])
+
+  @@index([calisanId])
+  @@index([sirketId])
+  @@index([bitisTarihi])
+}
+
+enum FaturaTuru {
+  KESILEN
+  ALINAN
+}
+
+enum FaturaOdemeDurumu {
+  BEKLIYOR
+  ODENDI
+  GECIKTI
+}
+
+// Fatura takibi: sadece Yönetici + ek PIN ile açılan ayrı "Faturalar" bölümü
+// (Çekler ile aynı PIN'i kullanır). Kestiğimiz (KESILEN) ve aldığımız (ALINAN)
+// faturalar tek tabloda, tür alanıyla ayrılır. PDF nüshası isteğe bağlı olarak
+// yerel diskte (Railway Volume) saklanır, yolu pdfYolu alanında tutulur.
+model Fatura {
+  id              String            @id @default(cuid())
+  tur             FaturaTuru
+  faturaNo        String?
+  tarih           DateTime
+  aciklama        String?
+  karsiTaraf      String?
+  tutar           Float
+  kdvOrani        Float             @default(20)
+  kdvTutari       Float
+  kdvDahilTutar   Float
+  tevkifatTutari  Float?
+  vadeTarihi      DateTime?
+  odemeDurumu     FaturaOdemeDurumu @default(BEKLIYOR)
+  sirketId        String?
+  sirket          Sirket?           @relation(fields: [sirketId], references: [id])
+  pdfYolu         String?
+  pdfDosyaAdi     String?
+  // Haftalık Ödemeler görünümü için: gerçek ödeme tarihi, ödemenin yapıldığı
+  // IBAN bilgisi ve işi yapan yüklenici/taşeron adı. Üçü de opsiyonel — dolu
+  // olan aldığımız (ALINAN) faturalar otomatik olarak haftalık ödemeler
+  // tablosunda kendi haftasına düşer.
+  odemeTarihi     DateTime?
+  ibanBilgisi     String?
+  yuklenici       String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([tarih])
+  @@index([vadeTarihi])
+  @@index([odemeDurumu])
+  @@index([tur])
+  @@index([sirketId])
+}
+
+// Haftalık Ödemeler görünümünde faturaya bağlı olmadan elle girilen ödeme
+// kalemleri (ör. personele elden verilen haftalık harcama, fatura kesilmeyen
+// nakliye/hizmet bedeli). Faturalar sekmesindeki ALINAN faturalarla birlikte,
+// şirket + hafta bazında gruplanarak gösterilir.
+model HaftalikOdeme {
+  id            String    @id @default(cuid())
+  tarih         DateTime
+  odemeTarihi   DateTime?
+  yapilanIs     String
+  firma         String?
+  ibanBilgisi   String?
+  tutar         Float
+  yuklenici     String?
+  sirketId      String
+  sirket        Sirket    @relation(fields: [sirketId], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tarih])
+  @@index([sirketId])
+}
+
+// ---------------------------------------------------------------------------
+// Proje Maliyeti: şantiye bazında kâr/zarar takibi. Excel'deki "gerekli
+// miktar / kullanılan miktar" malzeme mantığı + araçların günlük çalışma
+// takibi (yalnız çalıştığı gün için yevmiye) + personel/nakliye/akaryakıt/
+// gelir tek özet kaydında; İhale'nin hakediş toplamından bağımsız, sahada
+// gerçekleşen maliyeti göstermek içindir.
+// ---------------------------------------------------------------------------
+
+// Şantiyenin malzeme ihtiyacı (uzunluk x genişlik x derinlik'ten hesaplanan
+// "gerekli miktar") ile sahada fiilen tüketilen "kullanılan miktar"ı ayrı
+// tutar; maliyet KULLANILAN miktar üzerinden hesaplanır.
+model ProjeMalzeme {
+  id               String   @id @default(cuid())
+  santiyeId        String
+  santiye          Santiye  @relation(fields: [santiyeId], references: [id], onDelete: Cascade)
+  kalem            String
+  uzunluk          Float?
+  genislik         Float?
+  derinlik         Float?
+  gerekliMiktar    Float?
+  kullanilanMiktar Float    @default(0)
+  birim            String
+  birimFiyat       Float    @default(0)
+  aciklama         String?
+  siraNo           Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([santiyeId])
+}
+
+// Bir aracın bu şantiyede takip edilip edilmediğini ve günlük kiralama
+// bedelini tutar (kepçe, kamyon, paletli vb.). Bir araç birden çok
+// şantiyede farklı bedelle takip edilebilir.
+model ProjeArac {
+  id          String   @id @default(cuid())
+  santiyeId   String
+  santiye     Santiye  @relation(fields: [santiyeId], references: [id], onDelete: Cascade)
+  aracId      String
+  arac        Arac     @relation(fields: [aracId], references: [id])
+  gunlukBedel Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([santiyeId, aracId])
+  @@index([santiyeId])
+}
+
+// Bir aracın belirli bir günde bu şantiyede çalışıp çalışmadığı. Yalnız
+// çalıştığı günler için yevmiye maliyete yansır.
+model ProjeAracGun {
+  id        String   @id @default(cuid())
+  santiyeId String
+  santiye   Santiye  @relation(fields: [santiyeId], references: [id], onDelete: Cascade)
+  aracId    String
+  arac      Arac     @relation(fields: [aracId], references: [id])
+  tarih     DateTime
+  calisti   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([santiyeId, aracId, tarih])
+  @@index([santiyeId])
+  @@index([tarih])
+}
+
+// Şantiye başına tek özet kayıt: nakliye, personel, akaryakıt ve gelir
+// (hakediş). Kâr/zarar = gelir - (malzeme + araç + nakliye + personel + akaryakıt).
+model ProjeMaliyetOzet {
+  id                  String   @id @default(cuid())
+  santiyeId           String   @unique
+  santiye             Santiye  @relation(fields: [santiyeId], references: [id], onDelete: Cascade)
+
+  gelir               Float    @default(0)
+
+  seferSayisi         Int      @default(0)
+  seferBasiUcret      Float    @default(0)
+
+  personelSayisi      Int      @default(0)
+  calisilanGun        Int      @default(0)
+  gunlukUcret         Float    @default(0)
+  digerHarcamalar     Float    @default(0)
+
+  akaryakitLitre      Float    @default(0)
+  akaryakitBirimFiyat Float    @default(0)
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
