@@ -43,6 +43,9 @@ import {
   Fuel,
   Wallet,
   CalendarPlus,
+  PiggyBank,
+  BarChart3,
+  Receipt,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { SafeDate } from '@/components/safe-format'
@@ -87,6 +90,7 @@ interface ProjeAracSatir {
   aracId: string
   plaka: string
   isim: string | null
+  sahiplik: 'KENDI' | 'KIRALIK'
   gunlukBedel: number
   toplamGun: number
 }
@@ -105,7 +109,7 @@ interface Ozet {
   gunlukUcret: number
   digerHarcamalar: number
   akaryakitLitre: number
-  akaryakitBirimFiyat: number
+  akaryakitTutar: number
 }
 
 interface Detay {
@@ -120,6 +124,7 @@ interface AracSecenek {
   id: string
   plaka: string
   isim: string | null
+  sahiplik: 'KENDI' | 'KIRALIK'
 }
 
 // ---------------------------------------------------------------------------
@@ -139,6 +144,29 @@ export function ProjeMaliyetiClient() {
   }, [])
 
   useEffect(() => { loadList() }, [loadList])
+
+  const toplam = santiyeler.reduce(
+    (acc, s) => ({
+      gelir: acc.gelir + s.gelir,
+      gider: acc.gider + s.toplamGider,
+      net: acc.net + s.netKarZarar,
+      malzeme: acc.malzeme + s.malzemeToplam,
+      arac: acc.arac + s.aracToplam,
+      nakliye: acc.nakliye + s.nakliyeToplam,
+      personel: acc.personel + s.personelToplam,
+      akaryakit: acc.akaryakit + s.akaryakitToplam,
+    }),
+    { gelir: 0, gider: 0, net: 0, malzeme: 0, arac: 0, nakliye: 0, personel: 0, akaryakit: 0 }
+  )
+
+  const kirilim = [
+    { ad: 'Malzeme', tutar: toplam.malzeme, icon: Package },
+    { ad: 'Araç Yevmiyesi', tutar: toplam.arac, icon: Truck },
+    { ad: 'Nakliye', tutar: toplam.nakliye, icon: Truck },
+    { ad: 'Personel', tutar: toplam.personel, icon: Users },
+    { ad: 'Akaryakıt', tutar: toplam.akaryakit, icon: Fuel },
+  ]
+  const kirilimMax = Math.max(1, ...kirilim.map((k) => k.tutar))
 
   return (
     <div className="space-y-6">
@@ -167,6 +195,64 @@ export function ProjeMaliyetiClient() {
           </CardContent>
         </Card>
       ) : (
+        <>
+          {/* Genel özet / dashboard */}
+          <FadeIn>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <Card className="border-none bg-gradient-to-br from-primary/10 to-primary/5">
+                  <CardContent className="p-4">
+                    <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><Wallet className="h-3.5 w-3.5" /> Toplam Gelir</p>
+                    <p className="text-xl font-bold mt-1.5">{formatTL(toplam.gelir)}</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-none bg-gradient-to-br from-destructive/10 to-destructive/5">
+                  <CardContent className="p-4">
+                    <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><Receipt className="h-3.5 w-3.5" /> Toplam Maliyet</p>
+                    <p className="text-xl font-bold mt-1.5">{formatTL(toplam.gider)}</p>
+                  </CardContent>
+                </Card>
+                <Card className={`border-none bg-gradient-to-br ${toplam.net >= 0 ? 'from-green-600/15 to-green-600/5' : 'from-destructive/15 to-destructive/5'}`}>
+                  <CardContent className="p-4">
+                    <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><PiggyBank className="h-3.5 w-3.5" /> Net Kâr / Zarar</p>
+                    <p className={`text-xl font-bold mt-1.5 flex items-center gap-1 ${toplam.net > 0 ? 'text-green-600' : toplam.net < 0 ? 'text-destructive' : ''}`}>
+                      {toplam.net > 0 ? <TrendingUp className="h-4 w-4" /> : toplam.net < 0 ? <TrendingDown className="h-4 w-4" /> : null}
+                      {formatTL(toplam.net)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="border-none bg-gradient-to-br from-secondary/15 to-secondary/5">
+                  <CardContent className="p-4">
+                    <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5" /> Şantiye Sayısı</p>
+                    <p className="text-xl font-bold mt-1.5">{santiyeler.length}</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardContent className="p-4 space-y-3">
+                  <h4 className="font-semibold flex items-center gap-2 text-sm"><BarChart3 className="h-4 w-4 text-secondary" /> Kategoriye Göre Gider Kırılımı (tüm şantiyeler)</h4>
+                  <div className="space-y-2.5">
+                    {kirilim.map((k) => (
+                      <div key={k.ad} className="flex items-center gap-3">
+                        <div className="w-36 shrink-0 text-sm text-muted-foreground flex items-center gap-1.5">
+                          <k.icon className="h-3.5 w-3.5" /> {k.ad}
+                        </div>
+                        <div className="flex-1 h-2.5 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-secondary"
+                            style={{ width: `${(k.tutar / kirilimMax) * 100}%` }}
+                          />
+                        </div>
+                        <div className="w-28 shrink-0 text-right text-sm font-medium">{formatTL(k.tutar)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </FadeIn>
+
         <Accordion
           type="single"
           collapsible
@@ -218,6 +304,7 @@ export function ProjeMaliyetiClient() {
             </AccordionItem>
           ))}
         </Accordion>
+        </>
       )}
     </div>
   )
@@ -251,7 +338,7 @@ function SantiyeDetay({ santiyeId, onChange }: { santiyeId: string; onChange: ()
   const nakliyeToplam = detay.ozet.seferSayisi * detay.ozet.seferBasiUcret
   const personelToplam =
     detay.ozet.personelSayisi * detay.ozet.calisilanGun * detay.ozet.gunlukUcret + detay.ozet.digerHarcamalar
-  const akaryakitToplam = detay.ozet.akaryakitLitre * detay.ozet.akaryakitBirimFiyat
+  const akaryakitToplam = detay.ozet.akaryakitTutar
   const toplamGider = malzemeToplam + aracToplam + nakliyeToplam + personelToplam + akaryakitToplam
   const netKarZarar = detay.ozet.gelir - toplamGider
 
@@ -514,7 +601,11 @@ function AracBolumu({
     fetch('/api/araclar').then((r) => r.json()).then((d) => setTumAraclar(Array.isArray(d) ? d : []))
   }, [])
 
-  const takipEdilmeyenler = tumAraclar.filter((a) => !araclar.some((pa) => pa.aracId === a.id))
+  // Sadece kiralık/dışarıdan tutulan araçlar burada seçilebilir — kendi
+  // araçlarımızın günlük "kiralama bedeli" olmadığı için proje maliyetine
+  // araç yevmiyesi olarak girmez.
+  const kiralikAraclar = tumAraclar.filter((a) => a.sahiplik === 'KIRALIK')
+  const takipEdilmeyenler = kiralikAraclar.filter((a) => !araclar.some((pa) => pa.aracId === a.id))
 
   const handleAracEkle = async () => {
     if (!secilenAracId) { toast.error('Araç seçin'); return }
@@ -596,14 +687,17 @@ function AracBolumu({
     <Card>
       <CardContent className="p-4 space-y-4">
         <div className="flex items-center justify-between">
-          <h4 className="font-semibold flex items-center gap-2"><Truck className="h-4 w-4" /> Çalışan Araçlar</h4>
+          <div>
+            <h4 className="font-semibold flex items-center gap-2"><Truck className="h-4 w-4" /> Çalışan Araçlar (Kiralık / Dışarıdan)</h4>
+            <p className="text-xs text-muted-foreground mt-0.5">Yalnızca kiralık/dışarıdan tutulan araçlar; kendi araçlarımız burada listelenmez.</p>
+          </div>
           <Button size="sm" variant="outline" onClick={() => setAracDialogOpen(true)}>
             <Plus className="h-3.5 w-3.5 mr-1" /> Araç Ekle
           </Button>
         </div>
 
         {araclar.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Bu şantiyede henüz takip edilen araç yok.</p>
+          <p className="text-sm text-muted-foreground">Bu şantiyede henüz takip edilen kiralık araç yok.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -703,7 +797,7 @@ function AracBolumu({
                 <SelectTrigger><SelectValue placeholder="Araç seçin" /></SelectTrigger>
                 <SelectContent>
                   {takipEdilmeyenler.length === 0 && (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">Eklenecek başka araç yok</div>
+                    <div className="px-3 py-2 text-sm text-muted-foreground">Eklenecek kiralık/dışarıdan araç yok — Araçlar sayfasında bir aracı &quot;Kiralık&quot; olarak işaretleyin</div>
                   )}
                   {takipEdilmeyenler.map((a) => (
                     <SelectItem key={a.id} value={a.id}>{a.plaka}{a.isim ? ` — ${a.isim}` : ''}</SelectItem>
@@ -774,7 +868,7 @@ function DigerMaliyetlerBolumu({
     gunlukUcret: ozet.gunlukUcret.toString(),
     digerHarcamalar: ozet.digerHarcamalar.toString(),
     akaryakitLitre: ozet.akaryakitLitre.toString(),
-    akaryakitBirimFiyat: ozet.akaryakitBirimFiyat.toString(),
+    akaryakitTutar: ozet.akaryakitTutar.toString(),
     gelir: ozet.gelir.toString(),
   })
   const [saving, setSaving] = useState(false)
@@ -822,7 +916,7 @@ function DigerMaliyetlerBolumu({
           <h4 className="font-semibold flex items-center gap-2"><Fuel className="h-4 w-4" /> Akaryakıt</h4>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5"><Label>Miktar (Litre)</Label><Input type="number" value={form.akaryakitLitre} onChange={set('akaryakitLitre')} /></div>
-            <div className="space-y-1.5"><Label>Birim Fiyat (TL/Litre)</Label><Input type="number" value={form.akaryakitBirimFiyat} onChange={set('akaryakitBirimFiyat')} /></div>
+            <div className="space-y-1.5"><Label>Toplam Tutar (TL)</Label><Input type="number" value={form.akaryakitTutar} onChange={set('akaryakitTutar')} /></div>
           </div>
 
           <h4 className="font-semibold flex items-center gap-2 pt-2"><Wallet className="h-4 w-4" /> Gelir</h4>

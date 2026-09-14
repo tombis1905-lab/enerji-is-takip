@@ -12,7 +12,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params
   const body = await req.json()
-  const { plaka, isim, marka, model: modelAd, aktif, sigortaBitisTarihi, muayeneBitisTarihi } = body
+  const { plaka, isim, marka, model: modelAd, aktif, sahiplik, sigortaBitisTarihi, muayeneBitisTarihi } = body
+
+  if (sahiplik !== undefined && sahiplik !== 'KENDI' && sahiplik !== 'KIRALIK') {
+    return NextResponse.json({ error: 'Geçersiz sahiplik değeri' }, { status: 400 })
+  }
 
   try {
     const arac = await prisma.arac.update({
@@ -23,6 +27,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         ...(marka !== undefined && { marka: marka?.trim() || null }),
         ...(modelAd !== undefined && { model: modelAd?.trim() || null }),
         ...(aktif !== undefined && { aktif }),
+        ...(sahiplik !== undefined && { sahiplik }),
         ...(sigortaBitisTarihi !== undefined && { sigortaBitisTarihi: sigortaBitisTarihi ? new Date(sigortaBitisTarihi) : null }),
         ...(muayeneBitisTarihi !== undefined && { muayeneBitisTarihi: muayeneBitisTarihi ? new Date(muayeneBitisTarihi) : null }),
       },

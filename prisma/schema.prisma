@@ -78,6 +78,7 @@ model Arac {
   marka       String?
   model       String?
   aktif       Boolean   @default(true)
+  sahiplik    AracSahiplik @default(KENDI)
   sigortaBitisTarihi DateTime?
   muayeneBitisTarihi DateTime?
   createdAt   DateTime  @default(now())
@@ -86,6 +87,14 @@ model Arac {
 
   projeAraclar     ProjeArac[]
   projeAracGunleri ProjeAracGun[]
+}
+
+// KENDI: şirketin sahip olduğu araç. KIRALIK: günlük/haftalık kiralanan veya
+// dışarıdan tutulan araç — yalnızca bu tip Proje Maliyeti'nde araç yevmiyesi
+// gideri olarak takip edilir (kendi araçlarımızın günlük "kiralama bedeli" olmaz).
+enum AracSahiplik {
+  KENDI
+  KIRALIK
 }
 
 model AkaryakitKaydi {
@@ -440,7 +449,7 @@ model ProjeMaliyetOzet {
   digerHarcamalar     Float    @default(0)
 
   akaryakitLitre      Float    @default(0)
-  akaryakitBirimFiyat Float    @default(0)
+  akaryakitTutar      Float    @default(0)
 
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt

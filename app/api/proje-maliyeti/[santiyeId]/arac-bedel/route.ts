@@ -21,6 +21,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ san
 
   const arac = await prisma.arac.findUnique({ where: { id: aracId } })
   if (!arac) return NextResponse.json({ error: 'Araç bulunamadı' }, { status: 404 })
+  if (arac.sahiplik !== 'KIRALIK') {
+    return NextResponse.json({ error: 'Proje Maliyeti\'nde yalnızca kiralık/dışarıdan araçlar takip edilebilir' }, { status: 400 })
+  }
 
   const projeArac = await prisma.projeArac.upsert({
     where: { santiyeId_aracId: { santiyeId, aracId } },

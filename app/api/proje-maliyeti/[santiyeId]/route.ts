@@ -28,7 +28,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ san
     }),
     prisma.projeArac.findMany({
       where: { santiyeId },
-      include: { arac: { select: { id: true, plaka: true, isim: true } } },
+      include: { arac: { select: { id: true, plaka: true, isim: true, sahiplik: true } } },
       orderBy: { createdAt: 'asc' },
     }),
     prisma.projeAracGun.findMany({
@@ -62,6 +62,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ san
       aracId: a.aracId,
       plaka: a.arac.plaka,
       isim: a.arac.isim,
+      sahiplik: a.arac.sahiplik,
       gunlukBedel: a.gunlukBedel,
       toplamGun: toplamGunPerArac[a.aracId] ?? 0,
     })),
@@ -75,7 +76,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ san
       gunlukUcret: 0,
       digerHarcamalar: 0,
       akaryakitLitre: 0,
-      akaryakitBirimFiyat: 0,
+      akaryakitTutar: 0,
     },
   })
 }
@@ -98,7 +99,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ sant
     'gunlukUcret',
     'digerHarcamalar',
     'akaryakitLitre',
-    'akaryakitBirimFiyat',
+    'akaryakitTutar',
   ] as const
 
   const data: Record<string, number> = {}
@@ -124,7 +125,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ sant
       gunlukUcret: 0,
       digerHarcamalar: 0,
       akaryakitLitre: 0,
-      akaryakitBirimFiyat: 0,
+      akaryakitTutar: 0,
       ...data,
     },
   })

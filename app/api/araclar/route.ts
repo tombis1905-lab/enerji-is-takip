@@ -22,10 +22,13 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { plaka, isim, marka, model: modelAd, sigortaBitisTarihi, muayeneBitisTarihi } = body
+  const { plaka, isim, marka, model: modelAd, sahiplik, sigortaBitisTarihi, muayeneBitisTarihi } = body
 
   if (!plaka?.trim()) {
     return NextResponse.json({ error: 'Plaka zorunludur' }, { status: 400 })
+  }
+  if (sahiplik !== undefined && sahiplik !== 'KENDI' && sahiplik !== 'KIRALIK') {
+    return NextResponse.json({ error: 'Geçersiz sahiplik değeri' }, { status: 400 })
   }
 
   try {
@@ -35,6 +38,7 @@ export async function POST(req: NextRequest) {
         isim: isim?.trim() || null,
         marka: marka?.trim() || null,
         model: modelAd?.trim() || null,
+        sahiplik: sahiplik || 'KENDI',
         sigortaBitisTarihi: sigortaBitisTarihi ? new Date(sigortaBitisTarihi) : null,
         muayeneBitisTarihi: muayeneBitisTarihi ? new Date(muayeneBitisTarihi) : null,
       },

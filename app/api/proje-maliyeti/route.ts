@@ -41,7 +41,7 @@ export async function GET() {
     const personelToplam = ozet
       ? ozet.personelSayisi * ozet.calisilanGun * ozet.gunlukUcret + ozet.digerHarcamalar
       : 0
-    const akaryakitToplam = ozet ? ozet.akaryakitLitre * ozet.akaryakitBirimFiyat : 0
+    const akaryakitToplam = ozet ? ozet.akaryakitTutar : 0
     const gelir = ozet?.gelir ?? 0
 
     const toplamGider = malzemeToplam + aracToplam + nakliyeToplam + personelToplam + akaryakitToplam

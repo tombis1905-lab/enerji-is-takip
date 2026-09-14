@@ -6,8 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Truck, Plus, Pencil, Trash2, Check, Ban, Download, ShieldCheck, ClipboardCheck, AlertTriangle } from 'lucide-react'
 import * as XLSX from 'xlsx'
+
+type Sahiplik = 'KENDI' | 'KIRALIK'
 
 interface Arac {
   id: string
@@ -16,6 +19,7 @@ interface Arac {
   marka: string | null
   model: string | null
   aktif: boolean
+  sahiplik: Sahiplik
   sigortaBitisTarihi: string | null
   muayeneBitisTarihi: string | null
   _count?: { akaryakitKayitlari: number }
@@ -60,7 +64,7 @@ export function AraclarClient() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState({ plaka: '', isim: '', marka: '', model: '', sigortaBitisTarihi: '', muayeneBitisTarihi: '' })
+  const [form, setForm] = useState({ plaka: '', isim: '', marka: '', model: '', sahiplik: 'KENDI' as Sahiplik, sigortaBitisTarihi: '', muayeneBitisTarihi: '' })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [detayArac, setDetayArac] = useState<Arac | null>(null)
@@ -74,7 +78,7 @@ export function AraclarClient() {
   useEffect(() => { fetchAraclar() }, [fetchAraclar])
 
   const resetForm = () => {
-    setForm({ plaka: '', isim: '', marka: '', model: '', sigortaBitisTarihi: '', muayeneBitisTarihi: '' })
+    setForm({ plaka: '', isim: '', marka: '', model: '', sahiplik: 'KENDI', sigortaBitisTarihi: '', muayeneBitisTarihi: '' })
     setShowForm(false)
     setEditId(null)
     setError('')
@@ -111,6 +115,7 @@ export function AraclarClient() {
       isim: a.isim || '',
       marka: a.marka || '',
       model: a.model || '',
+      sahiplik: a.sahiplik || 'KENDI',
       sigortaBitisTarihi: a.sigortaBitisTarihi ? a.sigortaBitisTarihi.slice(0, 10) : '',
       muayeneBitisTarihi: a.muayeneBitisTarihi ? a.muayeneBitisTarihi.slice(0, 10) : '',
     })
@@ -145,6 +150,7 @@ export function AraclarClient() {
       'İsim': a.isim || '',
       'Marka': a.marka || '',
       'Model': a.model || '',
+      'Sahiplik': a.sahiplik === 'KIRALIK' ? 'Kiralık' : 'Kendi Aracımız',
       'Durum': a.aktif ? 'Aktif' : 'Pasif',
       'Sigorta Bitiş': tarihStr(a.sigortaBitisTarihi),
       'Muayene Bitiş': tarihStr(a.muayeneBitisTarihi),
@@ -224,6 +230,16 @@ export function AraclarClient() {
                 />
               </div>
               <div>
+                <Label>Sahiplik</Label>
+                <Select value={form.sahiplik} onValueChange={(v) => setForm({ ...form, sahiplik: v as Sahiplik })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="KENDI">Kendi Aracımız</SelectItem>
+                    <SelectItem value="KIRALIK">Kiralık / Dışarıdan</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
                 <Label className="flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" /> Sigorta Bitiş Tarihi</Label>
                 <Input
                   type="date"
@@ -260,6 +276,7 @@ export function AraclarClient() {
                   <th className="text-left p-3 font-semibold">Plaka</th>
                   <th className="text-left p-3 font-semibold">Kullanan</th>
                   <th className="text-left p-3 font-semibold">Marka / Model</th>
+                  <th className="text-left p-3 font-semibold">Sahiplik</th>
                   <th className="text-left p-3 font-semibold">Sigorta</th>
                   <th className="text-left p-3 font-semibold">Muayene</th>
                   <th className="text-center p-3 font-semibold">Durum</th>
@@ -269,7 +286,7 @@ export function AraclarClient() {
               <tbody>
                 {araclar.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-10 text-muted-foreground">
+                    <td colSpan={8} className="text-center py-10 text-muted-foreground">
                       <Truck className="h-10 w-10 mx-auto mb-2 opacity-30" />
                       Henüz araç eklenmemiş
                     </td>
@@ -293,6 +310,15 @@ export function AraclarClient() {
                       </td>
                       <td className="p-3 text-muted-foreground">{a.plaka === 'MİSAFİR ARAÇ' ? 'Misafir / Kiralık / Bidon' : (a.isim || '—')}</td>
                       <td className="p-3 text-muted-foreground">{[a.marka, a.model].filter(Boolean).join(' ') || '—'}</td>
+                      <td className="p-3">
+                        {a.plaka === 'MİSAFİR ARAÇ' ? (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        ) : (
+                          <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${a.sahiplik === 'KIRALIK' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-muted text-muted-foreground'}`}>
+                            {a.sahiplik === 'KIRALIK' ? 'Kiralık' : 'Kendi Aracımız'}
+                          </span>
+                        )}
+                      </td>
                       <td className="p-3"><DurumBadge tarihStr={a.sigortaBitisTarihi} /></td>
                       <td className="p-3"><DurumBadge tarihStr={a.muayeneBitisTarihi} /></td>
                       <td className="p-3 text-center">
