@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/db"
 import { getFileUrl } from "@/lib/s3"
+import { syncProjeMalzemeIsKaydi } from "@/lib/proje-malzeme-sync"
 
 export async function GET(request: Request) {
   try {
@@ -99,6 +100,12 @@ export async function POST(request: Request) {
         fotograflar: true,
       },
     })
+
+    try {
+      await syncProjeMalzemeIsKaydi(kayit.santiyeId, kayit.isTuruId)
+    } catch (e) {
+      console.error("Proje Maliyeti malzeme senkronizasyon hatası:", e)
+    }
 
     return NextResponse.json(kayit, { status: 201 })
   } catch (error: any) {

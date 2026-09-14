@@ -46,9 +46,13 @@ import {
   PiggyBank,
   BarChart3,
   Receipt,
+  Lock,
+  LockKeyhole,
+  Download,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { SafeDate } from '@/components/safe-format'
+import * as XLSX from 'xlsx'
 
 function formatTL(n: number) {
   return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(n) + ' ₺'
@@ -83,6 +87,7 @@ interface Malzeme {
   birim: string
   birimFiyat: number
   aciklama: string | null
+  isTuruId: string | null
 }
 
 interface ProjeAracSatir {
@@ -117,6 +122,7 @@ interface Detay {
   malzemeler: Malzeme[]
   araclar: ProjeAracSatir[]
   gunlukTakip: GunlukTakipSatir[]
+  personelHarcamaToplam: number
   ozet: Ozet
 }
 
@@ -150,23 +156,9 @@ export function ProjeMaliyetiClient() {
       gelir: acc.gelir + s.gelir,
       gider: acc.gider + s.toplamGider,
       net: acc.net + s.netKarZarar,
-      malzeme: acc.malzeme + s.malzemeToplam,
-      arac: acc.arac + s.aracToplam,
-      nakliye: acc.nakliye + s.nakliyeToplam,
-      personel: acc.personel + s.personelToplam,
-      akaryakit: acc.akaryakit + s.akaryakitToplam,
     }),
-    { gelir: 0, gider: 0, net: 0, malzeme: 0, arac: 0, nakliye: 0, personel: 0, akaryakit: 0 }
+    { gelir: 0, gider: 0, net: 0 }
   )
-
-  const kirilim = [
-    { ad: 'Malzeme', tutar: toplam.malzeme, icon: Package },
-    { ad: 'Araç Yevmiyesi', tutar: toplam.arac, icon: Truck },
-    { ad: 'Nakliye', tutar: toplam.nakliye, icon: Truck },
-    { ad: 'Personel', tutar: toplam.personel, icon: Users },
-    { ad: 'Akaryakıt', tutar: toplam.akaryakit, icon: Fuel },
-  ]
-  const kirilimMax = Math.max(1, ...kirilim.map((k) => k.tutar))
 
   return (
     <div className="space-y-6">
@@ -228,28 +220,6 @@ export function ProjeMaliyetiClient() {
                   </CardContent>
                 </Card>
               </div>
-
-              <Card>
-                <CardContent className="p-4 space-y-3">
-                  <h4 className="font-semibold flex items-center gap-2 text-sm"><BarChart3 className="h-4 w-4 text-secondary" /> Kategoriye Göre Gider Kırılımı (tüm şantiyeler)</h4>
-                  <div className="space-y-2.5">
-                    {kirilim.map((k) => (
-                      <div key={k.ad} className="flex items-center gap-3">
-                        <div className="w-36 shrink-0 text-sm text-muted-foreground flex items-center gap-1.5">
-                          <k.icon className="h-3.5 w-3.5" /> {k.ad}
-                        </div>
-                        <div className="flex-1 h-2.5 rounded-full bg-muted overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-secondary"
-                            style={{ width: `${(k.tutar / kirilimMax) * 100}%` }}
-                          />
-                        </div>
-                        <div className="w-28 shrink-0 text-right text-sm font-medium">{formatTL(k.tutar)}</div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
             </div>
           </FadeIn>
 
@@ -337,10 +307,21 @@ function SantiyeDetay({ santiyeId, onChange }: { santiyeId: string; onChange: ()
   const aracToplam = detay.araclar.reduce((a, x) => a + x.toplamGun * x.gunlukBedel, 0)
   const nakliyeToplam = detay.ozet.seferSayisi * detay.ozet.seferBasiUcret
   const personelToplam =
-    detay.ozet.personelSayisi * detay.ozet.calisilanGun * detay.ozet.gunlukUcret + detay.ozet.digerHarcamalar
+    detay.ozet.personelSayisi * detay.ozet.calisilanGun * detay.ozet.gunlukUcret +
+    detay.ozet.digerHarcamalar +
+    detay.personelHarcamaToplam
   const akaryakitToplam = detay.ozet.akaryakitTutar
   const toplamGider = malzemeToplam + aracToplam + nakliyeToplam + personelToplam + akaryakitToplam
   const netKarZarar = detay.ozet.gelir - toplamGider
+
+  const kirilim = [
+    { ad: 'Malzeme', tutar: malzemeToplam, icon: Package },
+    { ad: 'Araç Yevmiyesi', tutar: aracToplam, icon: Truck },
+    { ad: 'Nakliye', tutar: nakliyeToplam, icon: Truck },
+    { ad: 'Personel', tutar: personelToplam, icon: Users },
+    { ad: 'Akaryakıt', tutar: akaryakitToplam, icon: Fuel },
+  ]
+  const kirilimMax = Math.max(1, ...kirilim.map((k) => k.tutar))
 
   return (
     <div className="space-y-6 pt-1">
@@ -358,17 +339,34 @@ function SantiyeDetay({ santiyeId, onChange }: { santiyeId: string; onChange: ()
 
       <MalzemeBolumu santiyeId={santiyeId} malzemeler={detay.malzemeler} onChange={refresh} />
       <AracBolumu santiyeId={santiyeId} araclar={detay.araclar} gunlukTakip={detay.gunlukTakip} onChange={refresh} />
+      <PersonelHarcamalariBolumu santiyeId={santiyeId} onChange={refresh} />
       <DigerMaliyetlerBolumu santiyeId={santiyeId} ozet={detay.ozet} onChange={refresh} />
 
-      {/* Özet */}
+      {/* Bu şantiyeye ait kategori kırılımı */}
       <Card>
-        <CardContent className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-          <div><p className="text-muted-foreground">Malzeme</p><p className="font-medium">{formatTL(malzemeToplam)}</p></div>
-          <div><p className="text-muted-foreground">Araç Yevmiyesi</p><p className="font-medium">{formatTL(aracToplam)}</p></div>
-          <div><p className="text-muted-foreground">Nakliye</p><p className="font-medium">{formatTL(nakliyeToplam)}</p></div>
-          <div><p className="text-muted-foreground">Personel</p><p className="font-medium">{formatTL(personelToplam)}</p></div>
-          <div><p className="text-muted-foreground">Akaryakıt</p><p className="font-medium">{formatTL(akaryakitToplam)}</p></div>
-          <div><p className="text-muted-foreground">Toplam Gider</p><p className="font-semibold">{formatTL(toplamGider)}</p></div>
+        <CardContent className="p-4 space-y-3">
+          <h4 className="font-semibold flex items-center gap-2 text-sm"><BarChart3 className="h-4 w-4 text-secondary" /> Kategoriye Göre Gider Kırılımı</h4>
+          <div className="space-y-2.5">
+            {kirilim.map((k) => (
+              <div key={k.ad} className="flex items-center gap-3">
+                <div className="w-36 shrink-0 text-sm text-muted-foreground flex items-center gap-1.5">
+                  <k.icon className="h-3.5 w-3.5" /> {k.ad}
+                </div>
+                <div className="flex-1 h-2.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-secondary"
+                    style={{ width: `${(k.tutar / kirilimMax) * 100}%` }}
+                  />
+                </div>
+                <div className="w-28 shrink-0 text-right text-sm font-medium">{formatTL(k.tutar)}</div>
+              </div>
+            ))}
+            <div className="flex items-center gap-3 pt-1 border-t">
+              <div className="w-36 shrink-0 text-sm font-semibold">Toplam Gider</div>
+              <div className="flex-1" />
+              <div className="w-28 shrink-0 text-right text-sm font-semibold">{formatTL(toplamGider)}</div>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -389,6 +387,7 @@ function MalzemeBolumu({
 }) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
+  const [editAuto, setEditAuto] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     kalem: '', uzunluk: '', genislik: '', derinlik: '', gerekliMiktar: '',
@@ -397,12 +396,14 @@ function MalzemeBolumu({
 
   const openNew = () => {
     setEditId(null)
+    setEditAuto(false)
     setForm({ kalem: '', uzunluk: '', genislik: '', derinlik: '', gerekliMiktar: '', kullanilanMiktar: '', birim: '', birimFiyat: '', aciklama: '' })
     setDialogOpen(true)
   }
 
   const openEdit = (m: Malzeme) => {
     setEditId(m.id)
+    setEditAuto(!!m.isTuruId)
     setForm({
       kalem: m.kalem,
       uzunluk: m.uzunluk?.toString() ?? '',
@@ -449,7 +450,7 @@ function MalzemeBolumu({
   const handleDelete = async (id: string) => {
     if (!confirm('Bu malzeme kalemini silmek istediğinize emin misiniz?')) return
     const res = await fetch(`/api/proje-maliyeti/${santiyeId}/malzeme/${id}`, { method: 'DELETE' })
-    if (!res.ok) { toast.error('Silinemedi'); return }
+    if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d?.error ?? 'Silinemedi'); return }
     toast.success('Silindi')
     onChange()
   }
@@ -458,7 +459,10 @@ function MalzemeBolumu({
     <Card>
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h4 className="font-semibold flex items-center gap-2"><Package className="h-4 w-4" /> Malzeme</h4>
+          <div>
+            <h4 className="font-semibold flex items-center gap-2"><Package className="h-4 w-4" /> Malzeme</h4>
+            <p className="text-xs text-muted-foreground mt-0.5">İş Kayıtları'ndan gelen kalemler otomatik eklenir; yalnızca birim fiyatı elle girilir.</p>
+          </div>
           <Button size="sm" variant="outline" onClick={openNew}><Plus className="h-3.5 w-3.5 mr-1" /> Kalem Ekle</Button>
         </div>
 
@@ -484,7 +488,12 @@ function MalzemeBolumu({
                   const fark = (m.gerekliMiktar ?? 0) - m.kullanilanMiktar
                   return (
                     <tr key={m.id} className="border-b last:border-0 group">
-                      <td className="py-2 pr-2 font-medium">{m.kalem}</td>
+                      <td className="py-2 pr-2 font-medium">
+                        {m.kalem}
+                        {m.isTuruId && (
+                          <span className="ml-1.5 inline-flex items-center text-[10px] px-1.5 py-0.5 rounded-full bg-secondary/10 text-secondary align-middle">Otomatik</span>
+                        )}
+                      </td>
                       <td className="py-2 pr-2">{m.gerekliMiktar ?? '-'}</td>
                       <td className="py-2 pr-2">{m.kullanilanMiktar}</td>
                       <td className={`py-2 pr-2 ${fark < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{m.gerekliMiktar != null ? fark : '-'}</td>
@@ -494,7 +503,9 @@ function MalzemeBolumu({
                       <td className="py-2">
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <Button variant="ghost" size="icon-sm" onClick={() => openEdit(m)}><Pencil className="h-3.5 w-3.5" /></Button>
-                          <Button variant="ghost" size="icon-sm" onClick={() => handleDelete(m.id)} className="text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
+                          {!m.isTuruId && (
+                            <Button variant="ghost" size="icon-sm" onClick={() => handleDelete(m.id)} className="text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -542,8 +553,13 @@ function MalzemeBolumu({
                 <Input type="number" value={form.gerekliMiktar} onChange={(e) => setForm((p) => ({ ...p, gerekliMiktar: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
-                <Label>Kullanılan Miktar</Label>
-                <Input type="number" value={form.kullanilanMiktar} onChange={(e) => setForm((p) => ({ ...p, kullanilanMiktar: e.target.value }))} />
+                <Label>Kullanılan Miktar{editAuto ? ' (İş Kayıtları\'ndan otomatik)' : ''}</Label>
+                <Input
+                  type="number"
+                  value={form.kullanilanMiktar}
+                  disabled={editAuto}
+                  onChange={(e) => setForm((p) => ({ ...p, kullanilanMiktar: e.target.value }))}
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -928,5 +944,287 @@ function DigerMaliyetlerBolumu({
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 4. Personel Harcamaları — PIN korumalı, kişi/tarih/bölge bazlı harcama kaydı
+// ---------------------------------------------------------------------------
+interface PersonelHarcama {
+  id: string
+  tarih: string
+  personelAdi: string
+  bolge: string | null
+  aciklama: string | null
+  tutar: number
+}
+
+const PH_EMPTY_FORM = { tarih: '', personelAdi: '', bolge: '', aciklama: '', tutar: '' }
+
+function PersonelHarcamalariBolumu({ santiyeId, onChange }: { santiyeId: string; onChange: () => void }) {
+  const [locked, setLocked] = useState<boolean | null>(null)
+  const [pin, setPin] = useState('')
+  const [pinError, setPinError] = useState('')
+  const [pinSubmitting, setPinSubmitting] = useState(false)
+
+  const [kayitlar, setKayitlar] = useState<PersonelHarcama[]>([])
+  const [loading, setLoading] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({ ...PH_EMPTY_FORM })
+
+  const fetchKayitlar = useCallback(async () => {
+    setLoading(true)
+    const res = await fetch(`/api/proje-maliyeti/${santiyeId}/personel-harcama`)
+    if (res.status === 401) {
+      const d = await res.json().catch(() => ({}))
+      if (d?.code === 'PIN_GEREKLI') {
+        setLocked(true)
+        setLoading(false)
+        return
+      }
+    }
+    if (res.ok) {
+      setLocked(false)
+      setKayitlar(await res.json())
+    }
+    setLoading(false)
+  }, [santiyeId])
+
+  useEffect(() => { fetchKayitlar() }, [fetchKayitlar])
+
+  const handlePinSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPinError('')
+    setPinSubmitting(true)
+    try {
+      const res = await fetch('/api/proje-maliyeti/personel-harcama/dogrula', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin }),
+      })
+      if (!res.ok) { setPinError('PIN hatalı'); setPin(''); return }
+      setPin('')
+      fetchKayitlar()
+    } finally {
+      setPinSubmitting(false)
+    }
+  }
+
+  const handleLock = async () => {
+    await fetch('/api/proje-maliyeti/personel-harcama/dogrula', { method: 'DELETE' })
+    setLocked(true)
+    setKayitlar([])
+  }
+
+  const openNew = () => {
+    setEditId(null)
+    setForm({ ...PH_EMPTY_FORM, tarih: new Date().toISOString().slice(0, 10) })
+    setDialogOpen(true)
+  }
+
+  const openEdit = (k: PersonelHarcama) => {
+    setEditId(k.id)
+    setForm({
+      tarih: k.tarih.slice(0, 10),
+      personelAdi: k.personelAdi,
+      bolge: k.bolge ?? '',
+      aciklama: k.aciklama ?? '',
+      tutar: k.tutar.toString(),
+    })
+    setDialogOpen(true)
+  }
+
+  const handleSave = async () => {
+    if (!form.tarih || !form.personelAdi.trim() || !form.tutar) {
+      toast.error('Tarih, personel adı ve tutar zorunludur')
+      return
+    }
+    setSaving(true)
+    try {
+      const url = editId
+        ? `/api/proje-maliyeti/${santiyeId}/personel-harcama/${editId}`
+        : `/api/proje-maliyeti/${santiyeId}/personel-harcama`
+      const res = await fetch(url, {
+        method: editId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      if (!res.ok) { const d = await res.json(); toast.error(d?.error ?? 'Hata oluştu'); return }
+      toast.success(editId ? 'Harcama güncellendi' : 'Harcama eklendi')
+      setDialogOpen(false)
+      fetchKayitlar()
+      onChange()
+    } catch { toast.error('Hata oluştu') }
+    finally { setSaving(false) }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Bu harcama kaydını silmek istediğinize emin misiniz?')) return
+    const res = await fetch(`/api/proje-maliyeti/${santiyeId}/personel-harcama/${id}`, { method: 'DELETE' })
+    if (!res.ok) { toast.error('Silinemedi'); return }
+    toast.success('Silindi')
+    fetchKayitlar()
+    onChange()
+  }
+
+  const handleExcelExport = () => {
+    const rows = kayitlar.map((k) => ({
+      'Tarih': new Date(k.tarih).toLocaleDateString('tr-TR'),
+      'Personel': k.personelAdi,
+      'Bölge': k.bolge ?? '',
+      'Açıklama / Ne İçin': k.aciklama ?? '',
+      'Tutar (TL)': k.tutar,
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Personel Harcamaları')
+    XLSX.writeFile(wb, 'personel-harcamalari.xlsx')
+  }
+
+  const toplam = kayitlar.reduce((a, k) => a + k.tutar, 0)
+
+  if (locked === null || (locked === false && loading)) {
+    return (
+      <Card>
+        <CardContent className="p-4">
+          <div className="h-16 bg-muted animate-pulse rounded-lg" />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (locked) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-center space-y-3">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-secondary/10 mx-auto">
+            <Lock className="h-6 w-6 text-secondary" />
+          </div>
+          <div>
+            <h4 className="font-semibold">Personel Harcamaları Kilitli</h4>
+            <p className="text-sm text-muted-foreground">Bu bölüme girmek için PIN gerekiyor</p>
+          </div>
+          <form onSubmit={handlePinSubmit} className="space-y-2 max-w-xs mx-auto">
+            <Input
+              type="password"
+              inputMode="numeric"
+              autoFocus
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              placeholder="PIN"
+              className="text-center text-lg tracking-widest"
+            />
+            {pinError && <p className="text-destructive text-sm">{pinError}</p>}
+            <Button type="submit" disabled={pinSubmitting || !pin} className="w-full bg-secondary hover:bg-secondary/90">
+              {pinSubmitting ? 'Kontrol ediliyor...' : 'Kilidi Aç'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h4 className="font-semibold flex items-center gap-2"><Users className="h-4 w-4" /> Personel Harcamaları</h4>
+          <div className="flex gap-2">
+            {kayitlar.length > 0 && (
+              <Button size="sm" variant="outline" onClick={handleExcelExport}>
+                <Download className="h-3.5 w-3.5 mr-1" /> Excel
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={handleLock}>
+              <LockKeyhole className="h-3.5 w-3.5 mr-1" /> Kilitle
+            </Button>
+            <Button size="sm" variant="outline" onClick={openNew}>
+              <Plus className="h-3.5 w-3.5 mr-1" /> Harcama Ekle
+            </Button>
+          </div>
+        </div>
+
+        {kayitlar.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Bu şantiyede henüz personel harcaması girilmemiş.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b">
+                  <th className="py-2 pr-2">Tarih</th>
+                  <th className="py-2 pr-2">Personel</th>
+                  <th className="py-2 pr-2">Bölge</th>
+                  <th className="py-2 pr-2">Açıklama / Ne İçin</th>
+                  <th className="py-2 pr-2">Tutar</th>
+                  <th className="py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {kayitlar.map((k) => (
+                  <tr key={k.id} className="border-b last:border-0 group">
+                    <td className="py-2 pr-2"><SafeDate date={k.tarih} /></td>
+                    <td className="py-2 pr-2 font-medium">{k.personelAdi}</td>
+                    <td className="py-2 pr-2">{k.bolge ?? '-'}</td>
+                    <td className="py-2 pr-2">{k.aciklama ?? '-'}</td>
+                    <td className="py-2 pr-2 font-medium">{formatTL(k.tutar)}</td>
+                    <td className="py-2">
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="icon-sm" onClick={() => openEdit(k)}><Pencil className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="icon-sm" onClick={() => handleDelete(k.id)} className="text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="font-semibold">
+                  <td colSpan={4} className="py-2 pr-2 text-right">Toplam Personel Harcaması</td>
+                  <td className="py-2 pr-2">{formatTL(toplam)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </CardContent>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>{editId ? 'Harcama Düzenle' : 'Yeni Personel Harcaması'}</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label>Tarih *</Label>
+                <Input type="date" value={form.tarih} onChange={(e) => setForm((p) => ({ ...p, tarih: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Tutar (TL) *</Label>
+                <Input type="number" value={form.tutar} onChange={(e) => setForm((p) => ({ ...p, tutar: e.target.value }))} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Personel Adı *</Label>
+              <Input value={form.personelAdi} onChange={(e) => setForm((p) => ({ ...p, personelAdi: e.target.value }))} placeholder="Ör: Selahattin Bolat" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Bölge</Label>
+              <Input value={form.bolge} onChange={(e) => setForm((p) => ({ ...p, bolge: e.target.value }))} placeholder="Ör: Botaş İşi" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Açıklama / Ne İçin</Label>
+              <Input value={form.aciklama} onChange={(e) => setForm((p) => ({ ...p, aciklama: e.target.value }))} placeholder="Ör: Yemek, yol, konaklama..." />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Vazgeç</Button>
+            <Button onClick={handleSave} loading={saving} className="bg-secondary text-secondary-foreground hover:bg-secondary/90">
+              {editId ? 'Güncelle' : 'Ekle'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
   )
 }

@@ -21,7 +21,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ san
   const santiye = await prisma.santiye.findUnique({ where: { id: santiyeId } })
   if (!santiye) return NextResponse.json({ error: 'Şantiye bulunamadı' }, { status: 404 })
 
-  const [malzemeler, projeAraclar, aracGunleri, ozet] = await Promise.all([
+  const [malzemeler, projeAraclar, aracGunleri, ozet, personelHarcamaToplamAgg] = await Promise.all([
     prisma.projeMalzeme.findMany({
       where: { santiyeId },
       orderBy: [{ siraNo: 'asc' }, { createdAt: 'asc' }],
@@ -36,7 +36,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ san
       orderBy: { tarih: 'desc' },
     }),
     prisma.projeMaliyetOzet.findUnique({ where: { santiyeId } }),
+    // Yalnızca toplamı — kalem bazlı detay PIN korumalı ayrı endpoint'ten gelir.
+    prisma.projePersonelHarcama.aggregate({ where: { santiyeId }, _sum: { tutar: true } }),
   ])
+  const personelHarcamaToplam = personelHarcamaToplamAgg._sum.tutar ?? 0
 
   const toplamGunPerArac: Record<string, number> = {}
   for (const g of aracGunleri) {
@@ -67,6 +70,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ san
       toplamGun: toplamGunPerArac[a.aracId] ?? 0,
     })),
     gunlukTakip,
+    personelHarcamaToplam,
     ozet: ozet ?? {
       gelir: 0,
       seferSayisi: 0,

@@ -39,15 +39,17 @@ model Santiye {
   projeAraclar       ProjeArac[]
   projeAracGunleri   ProjeAracGun[]
   projeMaliyetOzeti  ProjeMaliyetOzet?
+  projePersonelHarcamalari ProjePersonelHarcama[]
 }
 
 model IsTuru {
-  id          String    @id @default(cuid())
-  ad          String    @unique
-  birim       String
-  aktif       Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  isKayitlari IsKaydi[]
+  id               String        @id @default(cuid())
+  ad               String        @unique
+  birim            String
+  aktif            Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  isKayitlari      IsKaydi[]
+  projeMalzemeleri ProjeMalzeme[]
 }
 
 model IsKaydi {
@@ -380,6 +382,12 @@ model ProjeMalzeme {
   id               String   @id @default(cuid())
   santiyeId        String
   santiye          Santiye  @relation(fields: [santiyeId], references: [id], onDelete: Cascade)
+  // Doldurulmuşsa bu kalem İş Kayıtlarından otomatik besleniyor demektir:
+  // kullanilanMiktar, o şantiye + iş türü için girilen tüm İş Kayıtları'nın
+  // miktar toplamıyla senkron tutulur (bkz. lib/proje-malzeme-sync.ts).
+  // Elle eklenen kalemlerde bu alan boştur.
+  isTuruId         String?
+  isTuru           IsTuru?  @relation(fields: [isTuruId], references: [id])
   kalem            String
   uzunluk          Float?
   genislik         Float?
@@ -394,6 +402,25 @@ model ProjeMalzeme {
   updatedAt        DateTime @updatedAt
 
   @@index([santiyeId])
+  @@index([isTuruId])
+}
+
+// Şantiye başına, PIN korumalı "Personel Harcamaları" alt bölümündeki
+// kişi/tarih/bölge bazlı harcama kayıtları (Tom'un Excel'indeki yapı).
+model ProjePersonelHarcama {
+  id          String   @id @default(cuid())
+  santiyeId   String
+  santiye     Santiye  @relation(fields: [santiyeId], references: [id], onDelete: Cascade)
+  tarih       DateTime
+  personelAdi String
+  bolge       String?
+  aciklama    String?
+  tutar       Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([santiyeId])
+  @@index([tarih])
 }
 
 // Bir aracın bu şantiyede takip edilip edilmediğini ve günlük kiralama

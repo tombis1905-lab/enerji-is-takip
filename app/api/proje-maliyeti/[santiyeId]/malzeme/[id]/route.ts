@@ -30,7 +30,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ sant
         ...(gerekliMiktar !== undefined && {
           gerekliMiktar: gerekliMiktar === '' || gerekliMiktar === null ? null : Number(gerekliMiktar),
         }),
-        ...(kullanilanMiktar !== undefined && { kullanilanMiktar: Number(kullanilanMiktar) || 0 }),
+        // İş Kayıtları'ndan otomatik beslenen kalemlerde kullanılan miktar elle
+        // değiştirilemez — o alan senkronizasyondan gelir (lib/proje-malzeme-sync.ts).
+        ...(kullanilanMiktar !== undefined && !existing.isTuruId && { kullanilanMiktar: Number(kullanilanMiktar) || 0 }),
         ...(birim !== undefined && { birim: birim.trim() }),
         ...(birimFiyat !== undefined && { birimFiyat: Number(birimFiyat) || 0 }),
         ...(aciklama !== undefined && { aciklama: aciklama?.trim() || null }),
@@ -52,6 +54,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const existing = await prisma.projeMalzeme.findUnique({ where: { id } })
   if (!existing || existing.santiyeId !== santiyeId) {
     return NextResponse.json({ error: 'Kayıt bulunamadı' }, { status: 404 })
+  }
+  if (existing.isTuruId) {
+    return NextResponse.json(
+      { error: 'Bu kalem İş Kayıtları\'ndan otomatik geliyor — silmek için ilgili İş Kayıtları\'nı silin' },
+      { status: 400 }
+    )
   }
 
   await prisma.projeMalzeme.delete({ where: { id } })

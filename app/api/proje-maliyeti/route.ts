@@ -17,6 +17,7 @@ export async function GET() {
       projeAraclar: true,
       projeAracGunleri: true,
       projeMaliyetOzeti: true,
+      projePersonelHarcamalari: true,
     },
   })
 
@@ -38,9 +39,10 @@ export async function GET() {
 
     const ozet = s.projeMaliyetOzeti
     const nakliyeToplam = ozet ? ozet.seferSayisi * ozet.seferBasiUcret : 0
-    const personelToplam = ozet
+    const personelHarcamaToplam = s.projePersonelHarcamalari.reduce((acc, h) => acc + h.tutar, 0)
+    const personelToplam = (ozet
       ? ozet.personelSayisi * ozet.calisilanGun * ozet.gunlukUcret + ozet.digerHarcamalar
-      : 0
+      : 0) + personelHarcamaToplam
     const akaryakitToplam = ozet ? ozet.akaryakitTutar : 0
     const gelir = ozet?.gelir ?? 0
 
