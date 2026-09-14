@@ -24,6 +24,7 @@ import {
   FileCheck2,
   Receipt,
   Calculator,
+  Wallet,
 } from 'lucide-react'
 
 interface PanelLayoutProps {
@@ -43,6 +44,7 @@ const navItems = [
   { href: '/depo', label: 'Depo', icon: Package, adminOnly: false },
   { href: '/ihaleler', label: 'İhaleler', icon: Gavel, adminOnly: true },
   { href: '/proje-maliyeti', label: 'Proje Maliyeti', icon: Calculator, adminOnly: true },
+  { href: '/personel-harcamalari', label: 'Personel Harcamaları', icon: Wallet, adminOnly: true },
   { href: '/cekler', label: 'Çekler', icon: FileCheck2, adminOnly: true },
   { href: '/faturalar', label: 'Faturalar', icon: Receipt, adminOnly: true },
 ]
