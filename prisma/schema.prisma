@@ -41,6 +41,7 @@ model Santiye {
   projeMaliyetOzeti  ProjeMaliyetOzet?
   projePersonelHarcamalari ProjePersonelHarcama[]
   akaryakitKayitlari AkaryakitKaydi[]
+  calisanGunlukKonumlari CalisanGunlukKonum[]
 }
 
 model IsTuru {
@@ -227,15 +228,36 @@ model Calisan {
   id            String           @id @default(cuid())
   ad            String
   telefon       String?
-  // Personelin şu an fiilen çalıştığı bölge/şantiye alanı (serbest metin) —
-  // hangi şirkette olduğu sirketGecmisi ile takip edilir, hangi bölgede
-  // çalıştığı ise ayrıca burada tutulur.
+  // Personelin varsayılan/sürekli çalıştığı bölge — "ilk kayıt": Tom bunu
+  // değiştirmediği sürece personelin her gün burada çalıştığı varsayılır.
   bolge         String?
   aciklama      String?
   aktif         Boolean          @default(true)
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
   sirketGecmisi PersonelSirket[]
+  gunlukKonumlar CalisanGunlukKonum[]
+}
+
+// Puantaj benzeri istisna kaydı: bir personel varsayılan bölgesinin (Calisan.bolge)
+// dışında, belirli bir GÜN için başka bir şantiyede çalıştıysa buraya tek satır
+// eklenir (ör. "Ferhat Kılıç normalde Botaş'ta ama 12.09'da X şantiyesine gitti").
+// Tom bir değişiklik girmediği sürece personel varsayılan bölgesinde çalışıyor
+// sayılır; bu tablo yalnızca istisnaları/o günlük değişiklikleri tutar.
+model CalisanGunlukKonum {
+  id        String   @id @default(cuid())
+  calisanId String
+  calisan   Calisan  @relation(fields: [calisanId], references: [id], onDelete: Cascade)
+  tarih     DateTime
+  santiyeId String
+  santiye   Santiye  @relation(fields: [santiyeId], references: [id])
+  aciklama  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([calisanId])
+  @@index([tarih])
+  @@index([santiyeId])
 }
 
 // İhale/proje portföy takibi (Çevre Şehircilik ve benzeri kurumlardan alınan

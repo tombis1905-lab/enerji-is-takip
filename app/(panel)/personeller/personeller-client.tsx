@@ -6,9 +6,17 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { FadeIn, Stagger, StaggerItem } from '@/components/ui/animate'
-import { Users, Plus, Trash2, Building2, History, LogOut, X, Phone, Pencil, Check, MapPin } from 'lucide-react'
+import { Users, Plus, Trash2, Building2, History, LogOut, X, Phone, Pencil, Check, MapPin, CalendarClock } from 'lucide-react'
 import { toast } from 'sonner'
+import { SafeDate } from '@/components/safe-format'
 
 interface Calisan {
   id: string
@@ -28,6 +36,21 @@ interface Sirket {
   aktif: boolean
 }
 
+interface Santiye {
+  id: string
+  ad: string
+}
+
+interface GunlukKonum {
+  id: string
+  tarih: string
+  aciklama: string | null
+  calisanId: string
+  calisanAdi: string
+  santiyeId: string
+  santiyeAdi: string
+}
+
 interface GecmisKaydi {
   id: string
   baslangicTarihi: string
@@ -41,7 +64,17 @@ const tarihStr = (t: string | null) => (t ? new Date(t).toLocaleDateString('tr-T
 export function PersonellerClient() {
   const [calisanlar, setCalisanlar] = useState<Calisan[]>([])
   const [sirketler, setSirketler] = useState<Sirket[]>([])
+  const [santiyeler, setSantiyeler] = useState<Santiye[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Puantaj — günlük çalışma yeri istisnaları
+  const [gunlukKonumlar, setGunlukKonumlar] = useState<GunlukKonum[]>([])
+  const [gunlukLoading, setGunlukLoading] = useState(true)
+  const [gunlukDialogOpen, setGunlukDialogOpen] = useState(false)
+  const [gunlukForm, setGunlukForm] = useState({ calisanId: '', tarih: '', santiyeId: '', aciklama: '' })
+  const [gunlukSaving, setGunlukSaving] = useState(false)
+  const [gunlukFilterCalisanId, setGunlukFilterCalisanId] = useState('__tumu__')
+  const [gunlukFilterSantiyeId, setGunlukFilterSantiyeId] = useState('__tumu__')
 
   // Yeni çalışan ekle
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -68,16 +101,70 @@ export function PersonellerClient() {
     Promise.all([
       fetch('/api/calisanlar').then(r => r.json()),
       fetch('/api/sirketler').then(r => r.json()),
+      fetch('/api/santiyeler').then(r => r.json()),
     ])
-      .then(([c, s]) => {
+      .then(([c, s, sn]) => {
         setCalisanlar(Array.isArray(c) ? c : [])
         setSirketler(Array.isArray(s) ? s : [])
+        setSantiyeler(
+          (Array.isArray(sn) ? sn : [])
+            .map((x: any) => ({ id: x.id, ad: x.ad }))
+            .sort((a: Santiye, b: Santiye) => a.ad.localeCompare(b.ad, 'tr')),
+        )
       })
       .catch(() => toast.error('Veriler yüklenemedi'))
       .finally(() => setLoading(false))
   }, [])
 
+  const loadGunlukKonumlar = useCallback(() => {
+    setGunlukLoading(true)
+    fetch('/api/calisanlar/gunluk-konum')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setGunlukKonumlar(Array.isArray(d) ? d : []))
+      .catch(() => toast.error('Puantaj kayıtları yüklenemedi'))
+      .finally(() => setGunlukLoading(false))
+  }, [])
+
   useEffect(() => { loadData() }, [loadData])
+  useEffect(() => { loadGunlukKonumlar() }, [loadGunlukKonumlar])
+
+  const openGunlukNew = () => {
+    setGunlukForm({ calisanId: '', tarih: new Date().toISOString().slice(0, 10), santiyeId: '', aciklama: '' })
+    setGunlukDialogOpen(true)
+  }
+
+  const handleGunlukSave = async () => {
+    if (!gunlukForm.calisanId) { toast.error('Personel seçiniz'); return }
+    if (!gunlukForm.tarih) { toast.error('Tarih giriniz'); return }
+    if (!gunlukForm.santiyeId) { toast.error('Şantiye seçiniz'); return }
+    setGunlukSaving(true)
+    try {
+      const res = await fetch('/api/calisanlar/gunluk-konum', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(gunlukForm),
+      })
+      if (!res.ok) { const d = await res.json(); toast.error(d?.error ?? 'Hata oluştu'); return }
+      toast.success('Kayıt eklendi')
+      setGunlukDialogOpen(false)
+      loadGunlukKonumlar()
+    } catch { toast.error('Hata oluştu') }
+    finally { setGunlukSaving(false) }
+  }
+
+  const handleGunlukDelete = async (id: string) => {
+    if (!confirm('Bu puantaj kaydını silmek istediğinize emin misiniz?')) return
+    const res = await fetch(`/api/calisanlar/gunluk-konum/${id}`, { method: 'DELETE' })
+    if (!res.ok) { toast.error('Silinemedi'); return }
+    toast.success('Silindi')
+    loadGunlukKonumlar()
+  }
+
+  const gunlukKonumlarFiltreli = gunlukKonumlar.filter((k) => {
+    if (gunlukFilterCalisanId !== '__tumu__' && k.calisanId !== gunlukFilterCalisanId) return false
+    if (gunlukFilterSantiyeId !== '__tumu__' && k.santiyeId !== gunlukFilterSantiyeId) return false
+    return true
+  })
 
   const openNew = () => {
     setForm({ ad: '', telefon: '', bolge: '', aciklama: '', sirketId: '', baslangicTarihi: new Date().toISOString().slice(0, 10) })
@@ -394,6 +481,151 @@ export function PersonellerClient() {
           </CardContent>
         </Card>
       )}
+
+      {/* Puantaj: günlük çalışma yeri istisnaları — kim, hangi şirkette olduğu yukarıda sabit kalır;
+          burada sadece "bugün/o gün normalden farklı bir şantiyede çalıştı" değişiklikleri listelenir. */}
+      {!loading && calisanlar.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CalendarClock className="h-4 w-4 text-secondary" /> Puantaj — Günlük Çalışma Yeri
+              </CardTitle>
+              <Button size="sm" onClick={openGunlukNew} className="bg-secondary text-secondary-foreground hover:bg-secondary/90">
+                <Plus className="h-3.5 w-3.5 mr-1" /> Kayıt Ekle
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground pt-1">
+              Bir değişiklik eklemediğin sürece personel, Personeller listesindeki bölgesinde çalışıyor sayılır.
+              Sadece &quot;o gün başka bir şantiyeye gitti&quot; gibi istisnaları buraya ekle.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {/* Filtre */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Select value={gunlukFilterCalisanId} onValueChange={setGunlukFilterCalisanId}>
+                <SelectTrigger className="w-auto min-w-[10rem] h-9">
+                  <Users className="h-3.5 w-3.5 mr-1 shrink-0" />
+                  <SelectValue placeholder="Personel" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__tumu__">Tüm Personel</SelectItem>
+                  {calisanlar.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.ad}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={gunlukFilterSantiyeId} onValueChange={setGunlukFilterSantiyeId}>
+                <SelectTrigger className="w-auto min-w-[10rem] h-9">
+                  <Building2 className="h-3.5 w-3.5 mr-1 shrink-0" />
+                  <SelectValue placeholder="Şantiye" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__tumu__">Tüm Şantiyeler</SelectItem>
+                  {santiyeler.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.ad}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {gunlukLoading ? (
+              <div className="h-16 bg-muted animate-pulse rounded-lg" />
+            ) : gunlukKonumlarFiltreli.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-3 text-center">
+                {gunlukKonumlar.length === 0 ? 'Henüz puantaj kaydı eklenmemiş.' : 'Bu filtreye uyan kayıt yok.'}
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-muted-foreground border-b bg-muted/40">
+                      <th className="py-2 px-2">Tarih</th>
+                      <th className="py-2 px-2">Personel</th>
+                      <th className="py-2 px-2">Şantiye</th>
+                      <th className="py-2 px-2">Açıklama</th>
+                      <th className="py-2 px-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gunlukKonumlarFiltreli.map((k) => (
+                      <tr key={k.id} className="border-b last:border-0 group hover:bg-muted/30 transition-colors">
+                        <td className="py-2 px-2"><SafeDate date={k.tarih} /></td>
+                        <td className="py-2 px-2 font-medium">{k.calisanAdi}</td>
+                        <td className="py-2 px-2">
+                          <span className="inline-flex text-xs bg-secondary/10 text-secondary rounded-full px-2 py-0.5">{k.santiyeAdi}</span>
+                        </td>
+                        <td className="py-2 px-2 text-muted-foreground">{k.aciklama || '—'}</td>
+                        <td className="py-2 px-2 text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive"
+                            onClick={() => handleGunlukDelete(k.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Puantaj Kaydı Ekle */}
+      <Dialog open={gunlukDialogOpen} onOpenChange={setGunlukDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Puantaj Kaydı Ekle</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label>Personel *</Label>
+              <Select value={gunlukForm.calisanId} onValueChange={(v) => setGunlukForm((p) => ({ ...p, calisanId: v }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Personel seçin" />
+                </SelectTrigger>
+                <SelectContent>
+                  {calisanlar.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.ad}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label>Tarih *</Label>
+                <Input type="date" value={gunlukForm.tarih} onChange={(e) => setGunlukForm((p) => ({ ...p, tarih: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Şantiye *</Label>
+                <Select value={gunlukForm.santiyeId} onValueChange={(v) => setGunlukForm((p) => ({ ...p, santiyeId: v }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Şantiye" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {santiyeler.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.ad}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Açıklama</Label>
+              <Input value={gunlukForm.aciklama} onChange={(e) => setGunlukForm((p) => ({ ...p, aciklama: e.target.value }))} placeholder="Opsiyonel" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGunlukDialogOpen(false)}>Vazgeç</Button>
+            <Button onClick={handleGunlukSave} loading={gunlukSaving} className="bg-secondary text-secondary-foreground hover:bg-secondary/90">
+              Ekle
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Yeni Çalışan Ekle */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
