@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -424,6 +424,25 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
     [kayitlar, aktifPersonel],
   )
 
+  // Aynı güne ait kayıtları grupla — tarihe göre azalan sırada, her grup içindeki kayıt sayısı ve gün toplamıyla.
+  // Bu, tabloda aynı tarihli birden fazla harcamayı (aynı günün içindeki satırları) görsel olarak birbirine
+  // bağlayıp, bir sonraki günün satırlarından net bir çizgiyle ayırmak için kullanılıyor.
+  const aktifKayitGruplari = useMemo(() => {
+    const siralanmis = aktifKayitlar.slice().sort((a, b) => b.tarih.localeCompare(a.tarih))
+    const gruplar: { tarih: string; kayitlar: PersonelHarcama[]; toplam: number }[] = []
+    for (const k of siralanmis) {
+      const gun = k.tarih.slice(0, 10)
+      const sonGrup = gruplar[gruplar.length - 1]
+      if (sonGrup && sonGrup.tarih === gun) {
+        sonGrup.kayitlar.push(k)
+        sonGrup.toplam += k.tutar
+      } else {
+        gruplar.push({ tarih: gun, kayitlar: [k], toplam: k.tutar })
+      }
+    }
+    return gruplar
+  }, [aktifKayitlar])
+
   // Bir "Kesişen" rozetine tıklandığında, o tarihte kimin nerede/ne kadar harcadığını gösteren detay listesi
   const kesisenDetayKayitlar = useMemo(
     () =>
@@ -655,36 +674,62 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
                         </tr>
                       </thead>
                       <tbody>
-                        {aktifKayitlar.length === 0 ? (
+                        {aktifKayitGruplari.length === 0 ? (
                           <tr>
                             <td colSpan={6} className="py-4 text-center text-muted-foreground">Kayıt yok</td>
                           </tr>
                         ) : (
-                          aktifKayitlar
-                            .slice()
-                            .sort((a, b) => b.tarih.localeCompare(a.tarih))
-                            .map((k) => (
-                              <tr key={k.id} className="border-b last:border-0 group">
-                                <td className="py-2 px-2"><SafeDate date={k.tarih} /></td>
-                                {aktifPersonel === '__tumu__' && (
-                                  <td className="py-2 px-2 font-medium">
-                                    <span className="inline-flex items-center gap-1.5">
-                                      <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${renkAl(k.personelAdi).dot}`} />
-                                      <span className={renkAl(k.personelAdi).text}>{k.personelAdi}</span>
-                                    </span>
+                          aktifKayitGruplari.map((grup, gi) => (
+                            <Fragment key={grup.tarih}>
+                              {grup.kayitlar.map((k, ki) => (
+                                <tr
+                                  key={k.id}
+                                  className={`group ${grup.kayitlar.length > 1 ? 'bg-secondary/[0.04]' : gi % 2 === 1 ? 'bg-muted/20' : ''} ${
+                                    ki === 0 ? 'border-t-2 border-t-border' : ''
+                                  } ${ki === grup.kayitlar.length - 1 && grup.kayitlar.length === 1 ? 'border-b' : ''}`}
+                                >
+                                  {ki === 0 && (
+                                    <td rowSpan={grup.kayitlar.length} className="py-2 px-2 align-top border-r">
+                                      <div className="flex flex-col gap-1">
+                                        <SafeDate date={k.tarih} />
+                                        {grup.kayitlar.length > 1 && (
+                                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 w-fit border-secondary/50 text-secondary">
+                                            {grup.kayitlar.length} kayıt
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </td>
+                                  )}
+                                  {aktifPersonel === '__tumu__' && (
+                                    <td className="py-2 px-2 font-medium">
+                                      <span className="inline-flex items-center gap-1.5">
+                                        <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${renkAl(k.personelAdi).dot}`} />
+                                        <span className={renkAl(k.personelAdi).text}>{k.personelAdi}</span>
+                                      </span>
+                                    </td>
+                                  )}
+                                  <td className="py-2 px-2">{k.bolge ?? '-'}</td>
+                                  <td className="py-2 px-2">{k.aciklama ?? '-'}</td>
+                                  <td className="py-2 px-2 text-right font-medium">{formatTL(k.tutar)}</td>
+                                  <td className="py-2 px-2">
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
+                                      <Button variant="ghost" size="icon-sm" onClick={() => openEdit(k)}><Pencil className="h-3.5 w-3.5" /></Button>
+                                      <Button variant="ghost" size="icon-sm" onClick={() => handleDelete(k.id)} className="text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
+                                    </div>
                                   </td>
-                                )}
-                                <td className="py-2 px-2">{k.bolge ?? '-'}</td>
-                                <td className="py-2 px-2">{k.aciklama ?? '-'}</td>
-                                <td className="py-2 px-2 text-right font-medium">{formatTL(k.tutar)}</td>
-                                <td className="py-2 px-2">
-                                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
-                                    <Button variant="ghost" size="icon-sm" onClick={() => openEdit(k)}><Pencil className="h-3.5 w-3.5" /></Button>
-                                    <Button variant="ghost" size="icon-sm" onClick={() => handleDelete(k.id)} className="text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))
+                                </tr>
+                              ))}
+                              {grup.kayitlar.length > 1 && (
+                                <tr className="bg-secondary/10 border-b-2 border-b-border">
+                                  <td colSpan={aktifPersonel === '__tumu__' ? 3 : 2} className="py-1 px-2 text-right text-xs text-muted-foreground italic">
+                                    Gün toplamı
+                                  </td>
+                                  <td className="py-1 px-2 text-right text-sm font-semibold">{formatTL(grup.toplam)}</td>
+                                  <td />
+                                </tr>
+                              )}
+                            </Fragment>
+                          ))
                         )}
                       </tbody>
                       {aktifKayitlar.length > 0 && (
