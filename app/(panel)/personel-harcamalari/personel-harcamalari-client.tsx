@@ -222,6 +222,7 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ ...PH_EMPTY_FORM })
   const [aktifPersonel, setAktifPersonel] = useState<string>('__tumu__')
+  const [kesisenDetayTarih, setKesisenDetayTarih] = useState<string | null>(null)
 
   const fetchKayitlar = useCallback(async () => {
     setLoading(true)
@@ -374,6 +375,15 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
   const aktifKayitlar = useMemo(
     () => (aktifPersonel === '__tumu__' ? kayitlar : kayitlar.filter((k) => k.personelAdi === aktifPersonel)),
     [kayitlar, aktifPersonel],
+  )
+
+  // Bir "Kesişen" rozetine tıklandığında, o tarihte kimin nerede/ne kadar harcadığını gösteren detay listesi
+  const kesisenDetayKayitlar = useMemo(
+    () =>
+      kesisenDetayTarih
+        ? kayitlar.filter((k) => k.tarih.slice(0, 10) === kesisenDetayTarih).sort((a, b) => b.tutar - a.tutar)
+        : [],
+    [kayitlar, kesisenDetayTarih],
   )
 
   const handleExcelExport = () => {
@@ -653,9 +663,11 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
                         <td className="py-2 px-2 text-right whitespace-nowrap font-semibold">{formatTL(g.genelToplam)}</td>
                         <td className="py-2 px-2 text-center">
                           {g.kisiSayisi > 1 && (
-                            <Badge variant="outline" className="border-amber-500 text-amber-600 gap-1">
-                              <AlertTriangle className="h-3 w-3" /> {g.kisiSayisi} kişi
-                            </Badge>
+                            <button type="button" onClick={() => setKesisenDetayTarih(g.tarih)} className="inline-flex">
+                              <Badge variant="outline" className="border-amber-500 text-amber-600 gap-1 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-950/40 transition-colors">
+                                <AlertTriangle className="h-3 w-3" /> {g.kisiSayisi} kişi
+                              </Badge>
+                            </button>
                           )}
                         </td>
                       </tr>
@@ -664,12 +676,54 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
                 </table>
               </div>
               <p className="text-xs text-muted-foreground">
-                "Kesişen" sütunu, aynı tarihte birden fazla personelin harcama girdiği günleri işaretler.
+                "Kesişen" sütunu, aynı tarihte birden fazla personelin harcama girdiği günleri işaretler — rozete tıklayınca kimin nerede harcadığını görebilirsin.
               </p>
             </div>
           </>
         )}
       </CardContent>
+
+      {/* Kesişen gün detayı: o tarihte kim, nerede, ne kadar harcamış */}
+      <Dialog open={!!kesisenDetayTarih} onOpenChange={(open) => !open && setKesisenDetayTarih(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {kesisenDetayTarih && <SafeDate date={kesisenDetayTarih} />} — Kim Nerede Harcamış
+            </DialogTitle>
+          </DialogHeader>
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b bg-muted/40">
+                  <th className="py-2 px-2">Personel</th>
+                  <th className="py-2 px-2">Bölge</th>
+                  <th className="py-2 px-2">Açıklama / Ne İçin</th>
+                  <th className="py-2 px-2 text-right">Tutar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {kesisenDetayKayitlar.map((k) => (
+                  <tr key={k.id} className="border-b last:border-0">
+                    <td className="py-2 px-2 font-medium">{k.personelAdi}</td>
+                    <td className="py-2 px-2">{k.bolge ?? '-'}</td>
+                    <td className="py-2 px-2">{k.aciklama ?? '-'}</td>
+                    <td className="py-2 px-2 text-right font-medium">{formatTL(k.tutar)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="font-semibold">
+                  <td colSpan={3} className="py-2 px-2 text-right">Toplam</td>
+                  <td className="py-2 px-2 text-right">{formatTL(kesisenDetayKayitlar.reduce((a, k) => a + k.tutar, 0))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setKesisenDetayTarih(null)}>Kapat</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg">
