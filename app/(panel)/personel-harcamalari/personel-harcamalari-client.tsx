@@ -91,6 +91,34 @@ function excelSekmeAdi(ad: string, kullanilanlar: Set<string>): string {
   return sonuc
 }
 
+// Her personele sabit, birbirinden farklı bir renk atamak için döngüsel bir palet.
+// Sıra, alfabetik personel listesindeki konuma göre belirlenir; böylece bir kişinin
+// rengi haftalık özet / sekmeler / genel liste arasında hep aynı kalır.
+const PERSONEL_RENK_PALETI = [
+  { text: 'text-blue-600 dark:text-blue-400', dot: 'bg-blue-500', chipBg: 'bg-blue-50 dark:bg-blue-950/40', rgb: '59,130,246' },
+  { text: 'text-emerald-600 dark:text-emerald-400', dot: 'bg-emerald-500', chipBg: 'bg-emerald-50 dark:bg-emerald-950/40', rgb: '16,185,129' },
+  { text: 'text-purple-600 dark:text-purple-400', dot: 'bg-purple-500', chipBg: 'bg-purple-50 dark:bg-purple-950/40', rgb: '168,85,247' },
+  { text: 'text-orange-600 dark:text-orange-400', dot: 'bg-orange-500', chipBg: 'bg-orange-50 dark:bg-orange-950/40', rgb: '249,115,22' },
+  { text: 'text-pink-600 dark:text-pink-400', dot: 'bg-pink-500', chipBg: 'bg-pink-50 dark:bg-pink-950/40', rgb: '236,72,153' },
+  { text: 'text-cyan-600 dark:text-cyan-400', dot: 'bg-cyan-500', chipBg: 'bg-cyan-50 dark:bg-cyan-950/40', rgb: '6,182,212' },
+  { text: 'text-amber-600 dark:text-amber-400', dot: 'bg-amber-500', chipBg: 'bg-amber-50 dark:bg-amber-950/40', rgb: '245,158,11' },
+  { text: 'text-indigo-600 dark:text-indigo-400', dot: 'bg-indigo-500', chipBg: 'bg-indigo-50 dark:bg-indigo-950/40', rgb: '99,102,241' },
+  { text: 'text-teal-600 dark:text-teal-400', dot: 'bg-teal-500', chipBg: 'bg-teal-50 dark:bg-teal-950/40', rgb: '20,184,166' },
+  { text: 'text-rose-600 dark:text-rose-400', dot: 'bg-rose-500', chipBg: 'bg-rose-50 dark:bg-rose-950/40', rgb: '244,63,94' },
+]
+
+function personelRengi(index: number) {
+  return PERSONEL_RENK_PALETI[index % PERSONEL_RENK_PALETI.length]
+}
+
+// Haftalık özet tablosundaki tutar hücrelerine, o kişinin o haftaki harcamasının
+// (kendi satırındaki en yükseğe göre oranla) yoğunluğuna göre canlı bir renk tonu verir.
+function isiHaritasiStili(deger: number, satirMax: number, rgb: string): React.CSSProperties {
+  if (!deger || !satirMax) return {}
+  const oran = Math.min(1, deger / satirMax)
+  return { backgroundColor: `rgba(${rgb}, ${0.1 + oran * 0.32})` }
+}
+
 // ---------------------------------------------------------------------------
 // Tipler
 // ---------------------------------------------------------------------------
@@ -329,6 +357,14 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'))
   }, [kayitlar])
 
+  // Her personele sabit bir renk ata — alfabetik sıradaki konumuna göre, tüm tablolarda aynı kalır
+  const personelRenkHaritasi = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof personelRengi>>()
+    personeller.forEach((p, i) => map.set(p, personelRengi(i)))
+    return map
+  }, [personeller])
+  const renkAl = (p: string) => personelRenkHaritasi.get(p) ?? personelRengi(0)
+
   // Dialog'daki "Personel Adı" seçim listesi: Personeller sayfasındaki çalışanlar + bu şantiyede
   // daha önce elle girilmiş (Personeller sayfasında olmayan) isimler bir arada
   const personelDropdownSecenekleri = useMemo(() => {
@@ -371,6 +407,17 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
     for (const k of kayitlar) map.set(k.personelAdi, (map.get(k.personelAdi) ?? 0) + k.tutar)
     return map
   }, [kayitlar])
+
+  // Haftalık özette ısı haritası tonu için: her personelin, kendi haftaları arasındaki en yüksek harcaması
+  const personelHaftaMax = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const h of haftalikOzet) {
+      for (const [p, v] of h.personelToplam) {
+        map.set(p, Math.max(map.get(p) ?? 0, v))
+      }
+    }
+    return map
+  }, [haftalikOzet])
 
   const aktifKayitlar = useMemo(
     () => (aktifPersonel === '__tumu__' ? kayitlar : kayitlar.filter((k) => k.personelAdi === aktifPersonel)),
@@ -521,24 +568,37 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
                     </tr>
                   </thead>
                   <tbody>
-                    {personeller.map((p) => (
-                      <tr
-                        key={p}
-                        className={`border-b last:border-0 cursor-pointer hover:bg-muted/30 ${aktifPersonel === p ? 'bg-secondary/5' : ''}`}
-                        onClick={() => setAktifPersonel(p)}
-                      >
-                        <td className="py-2 px-2 font-medium sticky left-0 bg-background">{p}</td>
-                        {haftalikOzet.map((h) => {
-                          const v = h.personelToplam.get(p)
-                          return (
-                            <td key={h.key} className="py-2 px-2 text-right whitespace-nowrap text-muted-foreground">
-                              {v ? formatTL(v) : '-'}
-                            </td>
-                          )
-                        })}
-                        <td className="py-2 px-2 text-right whitespace-nowrap font-semibold">{formatTL(personelToplamlari.get(p) ?? 0)}</td>
-                      </tr>
-                    ))}
+                    {personeller.map((p) => {
+                      const renk = renkAl(p)
+                      const satirMax = personelHaftaMax.get(p) ?? 0
+                      return (
+                        <tr
+                          key={p}
+                          className={`border-b last:border-0 cursor-pointer hover:bg-muted/30 ${aktifPersonel === p ? 'bg-secondary/5' : ''}`}
+                          onClick={() => setAktifPersonel(p)}
+                        >
+                          <td className="py-2 px-2 sticky left-0 bg-background">
+                            <span className="inline-flex items-center gap-1.5 font-medium">
+                              <span className={`inline-block h-2.5 w-2.5 rounded-full shrink-0 ${renk.dot}`} />
+                              <span className={renk.text}>{p}</span>
+                            </span>
+                          </td>
+                          {haftalikOzet.map((h) => {
+                            const v = h.personelToplam.get(p) ?? 0
+                            return (
+                              <td
+                                key={h.key}
+                                className="py-2 px-2 text-right whitespace-nowrap text-muted-foreground rounded"
+                                style={isiHaritasiStili(v, satirMax, renk.rgb)}
+                              >
+                                {v ? formatTL(v) : '-'}
+                              </td>
+                            )
+                          })}
+                          <td className="py-2 px-2 text-right whitespace-nowrap font-semibold">{formatTL(personelToplamlari.get(p) ?? 0)}</td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                   <tfoot>
                     <tr className="font-semibold bg-muted/40">
@@ -561,12 +621,16 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
               <Tabs value={aktifPersonel} onValueChange={setAktifPersonel}>
                 <TabsList className="flex-wrap h-auto">
                   <TabsTrigger value="__tumu__">Tümü</TabsTrigger>
-                  {personeller.map((p) => (
-                    <TabsTrigger key={p} value={p}>
-                      {p}
-                      <span className="ml-1.5 text-xs text-muted-foreground">{formatTL(personelToplamlari.get(p) ?? 0)}</span>
-                    </TabsTrigger>
-                  ))}
+                  {personeller.map((p) => {
+                    const renk = renkAl(p)
+                    return (
+                      <TabsTrigger key={p} value={p} className="gap-1.5">
+                        <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${renk.dot}`} />
+                        <span className={aktifPersonel === p ? renk.text : ''}>{p}</span>
+                        <span className="ml-1 text-xs text-muted-foreground">{formatTL(personelToplamlari.get(p) ?? 0)}</span>
+                      </TabsTrigger>
+                    )
+                  })}
                 </TabsList>
 
                 <TabsContent value={aktifPersonel} className="mt-3">
@@ -602,7 +666,14 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
                             .map((k) => (
                               <tr key={k.id} className="border-b last:border-0 group">
                                 <td className="py-2 px-2"><SafeDate date={k.tarih} /></td>
-                                {aktifPersonel === '__tumu__' && <td className="py-2 px-2 font-medium">{k.personelAdi}</td>}
+                                {aktifPersonel === '__tumu__' && (
+                                  <td className="py-2 px-2 font-medium">
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${renkAl(k.personelAdi).dot}`} />
+                                      <span className={renkAl(k.personelAdi).text}>{k.personelAdi}</span>
+                                    </span>
+                                  </td>
+                                )}
                                 <td className="py-2 px-2">{k.bolge ?? '-'}</td>
                                 <td className="py-2 px-2">{k.aciklama ?? '-'}</td>
                                 <td className="py-2 px-2 text-right font-medium">{formatTL(k.tutar)}</td>
@@ -641,21 +712,40 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
                   <thead>
                     <tr className="text-left text-muted-foreground border-b bg-muted/40">
                       <th className="py-2 px-2">Tarih</th>
-                      {personeller.map((p) => (
-                        <th key={p} className="py-2 px-2 text-right whitespace-nowrap">{p}</th>
-                      ))}
+                      {personeller.map((p) => {
+                        const renk = renkAl(p)
+                        return (
+                          <th key={p} className="py-2 px-2 text-right whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1.5 justify-end">
+                              <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${renk.dot}`} />
+                              <span className={renk.text}>{p}</span>
+                            </span>
+                          </th>
+                        )
+                      })}
                       <th className="py-2 px-2 text-right whitespace-nowrap">Toplam</th>
                       <th className="py-2 px-2 text-center whitespace-nowrap">Kesişen</th>
                     </tr>
                   </thead>
                   <tbody>
                     {tarihMatrisi.map((g) => (
-                      <tr key={g.tarih} className={`border-b last:border-0 ${g.kisiSayisi > 1 ? 'bg-amber-50 dark:bg-amber-950/20' : ''}`}>
+                      <tr
+                        key={g.tarih}
+                        className={`border-b last:border-0 ${
+                          g.kisiSayisi > 1
+                            ? 'bg-amber-100/70 dark:bg-amber-900/30 border-l-4 border-l-amber-500 font-medium'
+                            : ''
+                        }`}
+                      >
                         <td className="py-2 px-2"><SafeDate date={g.tarih} /></td>
                         {personeller.map((p) => {
                           const v = g.personelToplam.get(p)
+                          const renk = renkAl(p)
                           return (
-                            <td key={p} className="py-2 px-2 text-right whitespace-nowrap text-muted-foreground">
+                            <td
+                              key={p}
+                              className={`py-2 px-2 text-right whitespace-nowrap ${v ? renk.text + ' font-medium' : 'text-muted-foreground'}`}
+                            >
                               {v ? formatTL(v) : '-'}
                             </td>
                           )
@@ -664,7 +754,7 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
                         <td className="py-2 px-2 text-center">
                           {g.kisiSayisi > 1 && (
                             <button type="button" onClick={() => setKesisenDetayTarih(g.tarih)} className="inline-flex">
-                              <Badge variant="outline" className="border-amber-500 text-amber-600 gap-1 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-950/40 transition-colors">
+                              <Badge className="bg-amber-500 hover:bg-amber-600 text-white border-0 gap-1 cursor-pointer shadow-sm">
                                 <AlertTriangle className="h-3 w-3" /> {g.kisiSayisi} kişi
                               </Badge>
                             </button>
@@ -704,7 +794,12 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
               <tbody>
                 {kesisenDetayKayitlar.map((k) => (
                   <tr key={k.id} className="border-b last:border-0">
-                    <td className="py-2 px-2 font-medium">{k.personelAdi}</td>
+                    <td className="py-2 px-2 font-medium">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${renkAl(k.personelAdi).dot}`} />
+                        <span className={renkAl(k.personelAdi).text}>{k.personelAdi}</span>
+                      </span>
+                    </td>
                     <td className="py-2 px-2">{k.bolge ?? '-'}</td>
                     <td className="py-2 px-2">{k.aciklama ?? '-'}</td>
                     <td className="py-2 px-2 text-right font-medium">{formatTL(k.tutar)}</td>
