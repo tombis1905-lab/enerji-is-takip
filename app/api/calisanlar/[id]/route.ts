@@ -12,13 +12,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params
   const body = await req.json()
-  const { ad, telefon, aciklama, aktif } = body
+  const { ad, telefon, bolge, aciklama, aktif } = body
 
   const calisan = await prisma.calisan.update({
     where: { id },
     data: {
       ...(ad !== undefined && { ad: ad.trim() }),
       ...(telefon !== undefined && { telefon: telefon?.trim() || null }),
+      ...(bolge !== undefined && { bolge: bolge?.trim() || null }),
       ...(aciklama !== undefined && { aciklama: aciklama?.trim() || null }),
       ...(aktif !== undefined && { aktif }),
     },

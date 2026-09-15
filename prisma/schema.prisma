@@ -40,6 +40,7 @@ model Santiye {
   projeAracGunleri   ProjeAracGun[]
   projeMaliyetOzeti  ProjeMaliyetOzet?
   projePersonelHarcamalari ProjePersonelHarcama[]
+  akaryakitKayitlari AkaryakitKaydi[]
 }
 
 model IsTuru {
@@ -107,14 +108,20 @@ model AkaryakitKaydi {
   aciklama    String?
   aracId      String
   userId      String
+  // Opsiyonel: bu yakıt harcaması belirli bir şantiye içinse, o şantiyenin
+  // Proje Maliyeti'ndeki akaryakıt toplamına otomatik olarak eklenir (elle
+  // girilen akaryakitTutar alanının ÜSTÜNE, ayrı bir kalem olarak).
+  santiyeId   String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   arac        Arac      @relation(fields: [aracId], references: [id])
   user        User      @relation(fields: [userId], references: [id])
+  santiye     Santiye?  @relation(fields: [santiyeId], references: [id])
 
   @@index([aracId])
   @@index([tarih])
   @@index([userId])
+  @@index([santiyeId])
 }
 
 model IsKaydiFoto {
@@ -220,6 +227,10 @@ model Calisan {
   id            String           @id @default(cuid())
   ad            String
   telefon       String?
+  // Personelin şu an fiilen çalıştığı bölge/şantiye alanı (serbest metin) —
+  // hangi şirkette olduğu sirketGecmisi ile takip edilir, hangi bölgede
+  // çalıştığı ise ayrıca burada tutulur.
+  bolge         String?
   aciklama      String?
   aktif         Boolean          @default(true)
   createdAt     DateTime         @default(now())

@@ -16,6 +16,11 @@ interface Arac {
   model: string | null
 }
 
+interface SantiyeSecenek {
+  id: string
+  ad: string
+}
+
 interface AkaryakitKayit {
   id: string
   tarih: string
@@ -24,6 +29,7 @@ interface AkaryakitKayit {
   aciklama: string | null
   arac: { plaka: string; isim: string | null; marka: string | null; model: string | null }
   user: { name: string }
+  santiye: { id: string; ad: string } | null
 }
 
 interface AracOzet {
@@ -41,6 +47,7 @@ const fmtTL = (v: number) => new Intl.NumberFormat('tr-TR', { style: 'currency',
 export function AkaryakitClient({ role }: Props) {
   const isAdmin = role === 'ADMIN'
   const [araclar, setAraclar] = useState<Arac[]>([])
+  const [santiyeler, setSantiyeler] = useState<SantiyeSecenek[]>([])
   const [kayitlar, setKayitlar] = useState<AkaryakitKayit[]>([])
   const [aracOzet, setAracOzet] = useState<AracOzet[]>([])
   const [genelToplam, setGenelToplam] = useState(0)
@@ -54,6 +61,7 @@ export function AkaryakitClient({ role }: Props) {
 
   // Filtreler
   const [filterAracId, setFilterAracId] = useState('')
+  const [filterSantiyeId, setFilterSantiyeId] = useState('')
   const [filterAy, setFilterAy] = useState('')
   const [defaultAy, setDefaultAy] = useState('')
   const [showFilter, setShowFilter] = useState(false)
@@ -65,6 +73,7 @@ export function AkaryakitClient({ role }: Props) {
     fisNo: '',
     aciklama: '',
     aracId: '',
+    santiyeId: '',
   })
 
   // Misafir araç mı seçili?
@@ -91,9 +100,22 @@ export function AkaryakitClient({ role }: Props) {
     }
   }, [])
 
+  const fetchSantiyeler = useCallback(async () => {
+    const res = await fetch('/api/santiyeler')
+    if (res.ok) {
+      const data = await res.json()
+      setSantiyeler(
+        (Array.isArray(data) ? data : [])
+          .map((s: any) => ({ id: s.id, ad: s.ad }))
+          .sort((a: SantiyeSecenek, b: SantiyeSecenek) => a.ad.localeCompare(b.ad, 'tr')),
+      )
+    }
+  }, [])
+
   const fetchKayitlar = useCallback(async () => {
     const params = new URLSearchParams()
     if (filterAracId) params.set('aracId', filterAracId)
+    if (filterSantiyeId) params.set('santiyeId', filterSantiyeId)
     if (filterAy) params.set('ay', filterAy)
     params.set('page', String(page))
     params.set('limit', '50')
@@ -108,9 +130,9 @@ export function AkaryakitClient({ role }: Props) {
       setGenelToplam(data.genelToplam)
     }
     setLoading(false)
-  }, [filterAracId, filterAy, page])
+  }, [filterAracId, filterSantiyeId, filterAy, page])
 
-  useEffect(() => { fetchAraclar() }, [fetchAraclar])
+  useEffect(() => { fetchAraclar(); fetchSantiyeler() }, [fetchAraclar, fetchSantiyeler])
   useEffect(() => { fetchKayitlar() }, [fetchKayitlar])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -134,7 +156,7 @@ export function AkaryakitClient({ role }: Props) {
         setError(data.error || 'Hata oluştu')
         return
       }
-      setForm({ tarih: new Date().toISOString().slice(0, 10), tutar: '', fisNo: '', aciklama: '', aracId: form.aracId })
+      setForm({ tarih: new Date().toISOString().slice(0, 10), tutar: '', fisNo: '', aciklama: '', aracId: form.aracId, santiyeId: form.santiyeId })
       setShowForm(false)
       setPage(1)
       fetchKayitlar()
@@ -156,6 +178,7 @@ export function AkaryakitClient({ role }: Props) {
       'Araç': k.arac.plaka === 'MİSAFİR ARAÇ' ? 'Misafir Araç' : k.arac.plaka,
       'Kullanan': k.arac.plaka === 'MİSAFİR ARAÇ' ? 'Misafir / Kiralık' : (k.arac.isim || ''),
       'Tutar (₺)': k.tutar,
+      'Şantiye': k.santiye?.ad || '',
       'Fiş No': k.fisNo || '',
       'Açıklama': k.aciklama || '',
       'Kaydeden': k.user.name,
@@ -210,7 +233,7 @@ export function AkaryakitClient({ role }: Props) {
       {showFilter && (
         <Card className="border-blue-200 dark:border-blue-900">
           <CardContent className="pt-4 pb-3">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
               <div>
                 <Label className="text-xs">Araç</Label>
                 <select
@@ -225,6 +248,19 @@ export function AkaryakitClient({ role }: Props) {
                 </select>
               </div>
               <div>
+                <Label className="text-xs">Şantiye</Label>
+                <select
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  value={filterSantiyeId}
+                  onChange={(e) => { setFilterSantiyeId(e.target.value); setPage(1) }}
+                >
+                  <option value="">Tüm Şantiyeler</option>
+                  {santiyeler.map((s) => (
+                    <option key={s.id} value={s.id}>{s.ad}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <Label className="text-xs">Ay</Label>
                 <Input
                   type="month"
@@ -233,7 +269,7 @@ export function AkaryakitClient({ role }: Props) {
                 />
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => { setFilterAracId(''); setFilterAy(defaultAy); setPage(1) }}>
+                <Button variant="outline" size="sm" onClick={() => { setFilterAracId(''); setFilterSantiyeId(''); setFilterAy(defaultAy); setPage(1) }}>
                   <X className="h-3 w-3 mr-1" /> Temizle
                 </Button>
               </div>
@@ -251,7 +287,7 @@ export function AkaryakitClient({ role }: Props) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
               <div>
                 <Label>Araç *</Label>
                 <select
@@ -263,6 +299,19 @@ export function AkaryakitClient({ role }: Props) {
                   <option value="">Araç seçin</option>
                   {araclar.map((a) => (
                     <option key={a.id} value={a.id}>{a.plaka === 'MİSAFİR ARAÇ' ? '🚛 MİSAFİR ARAÇ' : `${a.plaka}${a.marka ? ` — ${a.marka}` : ''}`}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label>Şantiye</Label>
+                <select
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  value={form.santiyeId}
+                  onChange={(e) => setForm({ ...form, santiyeId: e.target.value })}
+                >
+                  <option value="">Genel (şantiyeye bağlı değil)</option>
+                  {santiyeler.map((s) => (
+                    <option key={s.id} value={s.id}>{s.ad}</option>
                   ))}
                 </select>
               </div>
@@ -378,6 +427,7 @@ export function AkaryakitClient({ role }: Props) {
                   <th className="text-left p-3 font-semibold">Tarih</th>
                   <th className="text-left p-3 font-semibold">Araç</th>
                   <th className="text-right p-3 font-semibold">Tutar (₺)</th>
+                  <th className="text-left p-3 font-semibold">Şantiye</th>
                   <th className="text-left p-3 font-semibold">Fiş No</th>
                   <th className="text-left p-3 font-semibold">Açıklama</th>
                   <th className="text-left p-3 font-semibold">Personel</th>
@@ -387,7 +437,7 @@ export function AkaryakitClient({ role }: Props) {
               <tbody>
                 {kayitlar.length === 0 ? (
                   <tr>
-                    <td colSpan={isAdmin ? 7 : 6} className="text-center py-10 text-muted-foreground">
+                    <td colSpan={isAdmin ? 8 : 7} className="text-center py-10 text-muted-foreground">
                       <Fuel className="h-10 w-10 mx-auto mb-2 opacity-30" />
                       Bu dönemde akaryakıt kaydı yok
                     </td>
@@ -401,6 +451,11 @@ export function AkaryakitClient({ role }: Props) {
                       <td className="p-3 font-medium">{k.arac.plaka === 'MİSAFİR ARAÇ' ? '🚛 Misafir' : k.arac.plaka}</td>
                       <td className="p-3 text-right font-semibold text-secondary">
                         <SafeNumber value={k.tutar} options={{ style: 'currency', currency: 'TRY', minimumFractionDigits: 2 }} locale="tr-TR" />
+                      </td>
+                      <td className="p-3 text-muted-foreground">
+                        {k.santiye ? (
+                          <span className="inline-flex items-center gap-1 text-xs bg-secondary/10 text-secondary rounded-full px-2 py-0.5">{k.santiye.ad}</span>
+                        ) : '—'}
                       </td>
                       <td className="p-3 text-muted-foreground">{k.fisNo || '—'}</td>
                       <td className="p-3 text-muted-foreground max-w-[200px] truncate">{k.aciklama || '—'}</td>

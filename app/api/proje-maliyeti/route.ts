@@ -10,16 +10,29 @@ export async function GET() {
     return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 })
   }
 
-  const santiyeler = await prisma.santiye.findMany({
-    orderBy: { ad: 'asc' },
-    include: {
-      projeMalzemeleri: true,
-      projeAraclar: true,
-      projeAracGunleri: true,
-      projeMaliyetOzeti: true,
-      projePersonelHarcamalari: true,
-    },
-  })
+  const [santiyeler, akaryakitGruplari] = await Promise.all([
+    prisma.santiye.findMany({
+      orderBy: { ad: 'asc' },
+      include: {
+        projeMalzemeleri: true,
+        projeAraclar: true,
+        projeAracGunleri: true,
+        projeMaliyetOzeti: true,
+        projePersonelHarcamalari: true,
+      },
+    }),
+    // Şantiyeye etiketlenmiş akaryakıt fişlerinin toplamı — elle girilen
+    // akaryakitTutar'ın üstüne otomatik olarak eklenir.
+    prisma.akaryakitKaydi.groupBy({
+      by: ['santiyeId'],
+      where: { santiyeId: { not: null } },
+      _sum: { tutar: true },
+    }),
+  ])
+  const akaryakitEtiketliMap = new Map<string, number>()
+  for (const g of akaryakitGruplari) {
+    if (g.santiyeId) akaryakitEtiketliMap.set(g.santiyeId, g._sum.tutar ?? 0)
+  }
 
   const sonuc = santiyeler.map((s) => {
     const malzemeToplam = s.projeMalzemeleri.reduce(
@@ -43,7 +56,8 @@ export async function GET() {
     const personelToplam = (ozet
       ? ozet.personelSayisi * ozet.calisilanGun * ozet.gunlukUcret + ozet.digerHarcamalar
       : 0) + personelHarcamaToplam
-    const akaryakitToplam = ozet ? ozet.akaryakitTutar : 0
+    const akaryakitEtiketliToplam = akaryakitEtiketliMap.get(s.id) ?? 0
+    const akaryakitToplam = (ozet ? ozet.akaryakitTutar : 0) + akaryakitEtiketliToplam
     const gelir = ozet?.gelir ?? 0
 
     const toplamGider = malzemeToplam + aracToplam + nakliyeToplam + personelToplam + akaryakitToplam

@@ -7,13 +7,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { FadeIn, Stagger, StaggerItem } from '@/components/ui/animate'
-import { Users, Plus, Trash2, Building2, History, LogOut, X, Phone, Pencil, Check } from 'lucide-react'
+import { Users, Plus, Trash2, Building2, History, LogOut, X, Phone, Pencil, Check, MapPin } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface Calisan {
   id: string
   ad: string
   telefon: string | null
+  bolge: string | null
   aciklama: string | null
   aktif: boolean
   aktifSirketId: string | null
@@ -44,7 +45,7 @@ export function PersonellerClient() {
 
   // Yeni çalışan ekle
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [form, setForm] = useState({ ad: '', telefon: '', aciklama: '', sirketId: '', baslangicTarihi: '' })
+  const [form, setForm] = useState({ ad: '', telefon: '', bolge: '', aciklama: '', sirketId: '', baslangicTarihi: '' })
   const [saving, setSaving] = useState(false)
 
   // Detay / Şirket Geçmişi dialog
@@ -59,6 +60,9 @@ export function PersonellerClient() {
   const [showYeniSirket, setShowYeniSirket] = useState(false)
   const [editingAd, setEditingAd] = useState(false)
   const [editAdDeger, setEditAdDeger] = useState('')
+  const [editingBolge, setEditingBolge] = useState(false)
+  const [editBolgeDeger, setEditBolgeDeger] = useState('')
+  const [bolgeSaving, setBolgeSaving] = useState(false)
 
   const loadData = useCallback(() => {
     Promise.all([
@@ -76,7 +80,7 @@ export function PersonellerClient() {
   useEffect(() => { loadData() }, [loadData])
 
   const openNew = () => {
-    setForm({ ad: '', telefon: '', aciklama: '', sirketId: '', baslangicTarihi: new Date().toISOString().slice(0, 10) })
+    setForm({ ad: '', telefon: '', bolge: '', aciklama: '', sirketId: '', baslangicTarihi: new Date().toISOString().slice(0, 10) })
     setDialogOpen(true)
   }
 
@@ -93,6 +97,7 @@ export function PersonellerClient() {
         body: JSON.stringify({
           ad: form.ad,
           telefon: form.telefon,
+          bolge: form.bolge,
           aciklama: form.aciklama,
           ...(form.sirketId ? { sirketId: form.sirketId, baslangicTarihi: form.baslangicTarihi } : {}),
         }),
@@ -117,6 +122,8 @@ export function PersonellerClient() {
     setShowYeniSirket(false)
     setYeniSirketAd('')
     setEditingAd(false)
+    setEditingBolge(false)
+    setEditBolgeDeger(c.bolge ?? '')
     const now = new Date().toISOString().slice(0, 10)
     setGecmisForm({ sirketId: '', baslangicTarihi: now, aciklama: '' })
     try {
@@ -244,6 +251,23 @@ export function PersonellerClient() {
     } catch { toast.error('Hata oluştu') }
   }
 
+  const handleBolgeKaydet = async () => {
+    if (!gecmisCalisan) return
+    setBolgeSaving(true)
+    try {
+      const res = await fetch(`/api/calisanlar/${gecmisCalisan.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bolge: editBolgeDeger }),
+      })
+      if (!res.ok) { toast.error('Güncellenemedi'); return }
+      toast.success('Bölge güncellendi')
+      setEditingBolge(false)
+      refreshGecmis()
+    } catch { toast.error('Hata oluştu') }
+    finally { setBolgeSaving(false) }
+  }
+
   const handleCalisanDelete = async () => {
     if (!gecmisCalisan) return
     if (!confirm(`${gecmisCalisan.ad} kaydını tamamen silmek istediğinize emin misiniz?`)) return
@@ -312,7 +336,14 @@ export function PersonellerClient() {
                           onClick={() => openGecmis(c)}
                           className="w-full flex items-center justify-between gap-2 rounded-md px-2 py-2 text-left hover:bg-muted/50 transition-colors"
                         >
-                          <span className="font-medium truncate">{c.ad}</span>
+                          <span className="min-w-0">
+                            <span className="font-medium truncate block">{c.ad}</span>
+                            {c.bolge && (
+                              <span className="text-xs text-secondary flex items-center gap-1 mt-0.5">
+                                <MapPin className="h-3 w-3 shrink-0" /> {c.bolge}
+                              </span>
+                            )}
+                          </span>
                           <span className="text-xs text-muted-foreground shrink-0">{tarihStr(c.aktifSirketBaslangic)} tarihinden beri</span>
                         </button>
                       ))
@@ -340,7 +371,14 @@ export function PersonellerClient() {
                 onClick={() => openGecmis(c)}
                 className="w-full flex items-center justify-between gap-2 rounded-md px-2 py-2 text-left hover:bg-muted/50 transition-colors"
               >
-                <span className="font-medium truncate">{c.ad}</span>
+                <span className="min-w-0">
+                  <span className="font-medium truncate block">{c.ad}</span>
+                  {c.bolge && (
+                    <span className="text-xs text-secondary flex items-center gap-1 mt-0.5">
+                      <MapPin className="h-3 w-3 shrink-0" /> {c.bolge}
+                    </span>
+                  )}
+                </span>
                 {c.telefon && <span className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" /> {c.telefon}</span>}
               </button>
             ))}
@@ -378,6 +416,14 @@ export function PersonellerClient() {
                 value={form.telefon}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, telefon: e.target.value }))}
                 placeholder="Opsiyonel"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Bölge</Label>
+              <Input
+                value={form.bolge}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, bolge: e.target.value }))}
+                placeholder="Ör: Botaş şantiyesi"
               />
             </div>
             <div className="grid grid-cols-2 gap-3 border-t pt-3">
@@ -458,6 +504,39 @@ export function PersonellerClient() {
                 {gecmisCalisan?.aktifSirket && (
                   <Button variant="outline" size="sm" onClick={handleAyrilis}>
                     <LogOut className="h-3.5 w-3.5 mr-1" /> Ayrıldı
+                  </Button>
+                )}
+              </div>
+
+              {/* Bölge */}
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" /> Çalıştığı bölge</p>
+                  {editingBolge ? (
+                    <div className="flex items-center gap-2 mt-1">
+                      <Input
+                        value={editBolgeDeger}
+                        onChange={(e) => setEditBolgeDeger(e.target.value)}
+                        placeholder="Ör: Botaş şantiyesi"
+                        className="h-8"
+                        autoFocus
+                      />
+                      <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={handleBolgeKaydet} disabled={bolgeSaving}>
+                        <Check className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="font-semibold truncate">{gecmisCalisan?.bolge || 'Belirtilmemiş'}</p>
+                  )}
+                </div>
+                {!editingBolge && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0"
+                    onClick={() => { setEditingBolge(true); setEditBolgeDeger(gecmisCalisan?.bolge ?? '') }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
                   </Button>
                 )}
               </div>

@@ -134,19 +134,20 @@ interface PersonelHarcama {
   bolge: string | null
   aciklama: string | null
   tutar: number
+  santiyeId: string
+  santiyeAdi: string
 }
 
-const PH_EMPTY_FORM = { tarih: '', personelAdi: '', bolge: '', aciklama: '', tutar: '' }
+const PH_EMPTY_FORM = { tarih: '', personelAdi: '', bolge: '', aciklama: '', tutar: '', santiyeId: '' }
 
 // ---------------------------------------------------------------------------
-// Sayfa: şantiye seçici + PIN korumalı Personel Harcamaları bölümü
+// Sayfa: PIN korumalı Personel Harcamaları bölümü (artık tüm şantiyeler genelinde
+// tek ekran; hangi şantiyeye ait olduğu her harcama satırında ayrı ayrı seçilir)
 // ---------------------------------------------------------------------------
 export function PersonelHarcamalariClient() {
   const [santiyeler, setSantiyeler] = useState<SantiyeSecenek[]>([])
   const [loadingSantiyeler, setLoadingSantiyeler] = useState(true)
-  const [selectedSantiyeId, setSelectedSantiyeId] = useState<string>('')
   const [personelSecenekleri, setPersonelSecenekleri] = useState<string[]>([])
-  const [baslangicUygulandi, setBaslangicUygulandi] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -168,19 +169,6 @@ export function PersonelHarcamalariClient() {
       .finally(() => setLoadingSantiyeler(false))
   }, [])
 
-  // URL'den ?santiye=... parametresi varsa (Proje Maliyeti sayfasındaki linkten geldiyse) başlangıçta onu seç
-  useEffect(() => {
-    if (baslangicUygulandi || santiyeler.length === 0) return
-    const params = new URLSearchParams(window.location.search)
-    const fromUrl = params.get('santiye')
-    if (fromUrl && santiyeler.some((s) => s.id === fromUrl)) {
-      setSelectedSantiyeId(fromUrl)
-    } else {
-      setSelectedSantiyeId(santiyeler[0].id)
-    }
-    setBaslangicUygulandi(true)
-  }, [santiyeler, baslangicUygulandi])
-
   return (
     <div className="space-y-6">
       <FadeIn>
@@ -189,7 +177,7 @@ export function PersonelHarcamalariClient() {
             <Wallet className="h-6 w-6 text-secondary" /> Personel Harcamaları
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Şantiye bazında, kişi/tarih/bölge detaylı personel harcama takibi — PIN korumalı
+            Kişi/tarih/bölge/şantiye detaylı personel harcama takibi — PIN korumalı
           </p>
         </div>
       </FadeIn>
@@ -204,40 +192,30 @@ export function PersonelHarcamalariClient() {
           </CardContent>
         </Card>
       ) : (
-        <>
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3 flex-wrap">
-              <Label className="text-sm shrink-0 flex items-center gap-1.5"><Building2 className="h-4 w-4" /> Şantiye</Label>
-              <Select value={selectedSantiyeId} onValueChange={setSelectedSantiyeId}>
-                <SelectTrigger className="w-full max-w-xs">
-                  <SelectValue placeholder="Şantiye seçin" />
-                </SelectTrigger>
-                <SelectContent>
-                  {santiyeler.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.ad}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </CardContent>
-          </Card>
-
-          {selectedSantiyeId && (
-            <PersonelHarcamalariBolumu
-              key={selectedSantiyeId}
-              santiyeId={selectedSantiyeId}
-              personelSecenekleri={personelSecenekleri}
-            />
-          )}
-        </>
+        <PersonelHarcamalariBolumu santiyeler={santiyeler} personelSecenekleri={personelSecenekleri} />
       )}
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// PIN korumalı, kişi/tarih/bölge bazlı harcama kaydı bölümü
+// PIN korumalı, kişi/tarih/bölge/şantiye bazlı harcama kaydı bölümü
 // ---------------------------------------------------------------------------
-function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiyeId: string; personelSecenekleri: string[] }) {
+function PersonelHarcamalariBolumu({ santiyeler, personelSecenekleri }: { santiyeler: SantiyeSecenek[]; personelSecenekleri: string[] }) {
+  const [santiyeFiltresi, setSantiyeFiltresi] = useState<string>('__tumu__')
+  const [baslangicUygulandi, setBaslangicUygulandi] = useState(false)
+
+  // URL'den ?santiye=... parametresi varsa (Proje Maliyeti sayfasındaki linkten geldiyse) başlangıçta o şantiyeye filtrele
+  useEffect(() => {
+    if (baslangicUygulandi || santiyeler.length === 0) return
+    const params = new URLSearchParams(window.location.search)
+    const fromUrl = params.get('santiye')
+    if (fromUrl && santiyeler.some((s) => s.id === fromUrl)) {
+      setSantiyeFiltresi(fromUrl)
+    }
+    setBaslangicUygulandi(true)
+  }, [santiyeler, baslangicUygulandi])
+
   const [locked, setLocked] = useState<boolean | null>(null)
   const [pin, setPin] = useState('')
   const [pinError, setPinError] = useState('')
@@ -254,7 +232,7 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
 
   const fetchKayitlar = useCallback(async () => {
     setLoading(true)
-    const res = await fetch(`/api/proje-maliyeti/${santiyeId}/personel-harcama`)
+    const res = await fetch('/api/proje-maliyeti/personel-harcama')
     if (res.status === 401) {
       const d = await res.json().catch(() => ({}))
       if (d?.code === 'PIN_GEREKLI') {
@@ -268,7 +246,7 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
       setKayitlar(await res.json())
     }
     setLoading(false)
-  }, [santiyeId])
+  }, [])
 
   useEffect(() => { fetchKayitlar() }, [fetchKayitlar])
 
@@ -302,6 +280,7 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
       ...PH_EMPTY_FORM,
       tarih: new Date().toISOString().slice(0, 10),
       personelAdi: varsayilanPersonel && varsayilanPersonel !== '__tumu__' ? varsayilanPersonel : '',
+      santiyeId: santiyeFiltresi !== '__tumu__' ? santiyeFiltresi : '',
     })
     setDialogOpen(true)
   }
@@ -314,6 +293,7 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
       bolge: k.bolge ?? '',
       aciklama: k.aciklama ?? '',
       tutar: k.tutar.toString(),
+      santiyeId: k.santiyeId,
     })
     setDialogOpen(true)
   }
@@ -323,11 +303,15 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
       toast.error('Tarih, personel adı ve tutar zorunludur')
       return
     }
+    if (!form.santiyeId) {
+      toast.error('Şantiye seçimi zorunludur')
+      return
+    }
     setSaving(true)
     try {
       const url = editId
-        ? `/api/proje-maliyeti/${santiyeId}/personel-harcama/${editId}`
-        : `/api/proje-maliyeti/${santiyeId}/personel-harcama`
+        ? `/api/proje-maliyeti/personel-harcama/${editId}`
+        : '/api/proje-maliyeti/personel-harcama'
       const res = await fetch(url, {
         method: editId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -345,17 +329,24 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
 
   const handleDelete = async (id: string) => {
     if (!confirm('Bu harcama kaydını silmek istediğinize emin misiniz?')) return
-    const res = await fetch(`/api/proje-maliyeti/${santiyeId}/personel-harcama/${id}`, { method: 'DELETE' })
+    const res = await fetch(`/api/proje-maliyeti/personel-harcama/${id}`, { method: 'DELETE' })
     if (!res.ok) { toast.error('Silinemedi'); return }
     toast.success('Silindi')
     fetchKayitlar()
   }
 
-  // Personel listesi (alfabetik, benzersiz) — bu şantiyede kayıt olan herkes
+  // Seçili şantiye filtresine göre daraltılmış kayıtlar — aşağıdaki tüm özet/tablo
+  // hesaplamaları bunun üzerinden yapılır; "__tumu__" iken tüm şantiyeler birlikte görünür.
+  const kayitlarFiltreli = useMemo(
+    () => (santiyeFiltresi === '__tumu__' ? kayitlar : kayitlar.filter((k) => k.santiyeId === santiyeFiltresi)),
+    [kayitlar, santiyeFiltresi],
+  )
+
+  // Personel listesi (alfabetik, benzersiz) — filtrelenmiş kayıtlarda geçen herkes
   const personeller = useMemo(() => {
-    const set = new Set(kayitlar.map((k) => k.personelAdi))
+    const set = new Set(kayitlarFiltreli.map((k) => k.personelAdi))
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'))
-  }, [kayitlar])
+  }, [kayitlarFiltreli])
 
   // Her personele sabit bir renk ata — alfabetik sıradaki konumuna göre, tüm tablolarda aynı kalır
   const personelRenkHaritasi = useMemo(() => {
@@ -375,7 +366,7 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
   // "HAFTALIK LİSTE" görünümü: her personelin, yılın haftalarına bölünmüş toplam harcaması.
   const haftalikOzet = useMemo(() => {
     const haftaMap = new Map<string, { yil: number; hafta: number; personelToplam: Map<string, number>; genelToplam: number }>()
-    for (const k of kayitlar) {
+    for (const k of kayitlarFiltreli) {
       const { yil, hafta } = isoHaftaBilgisi(k.tarih)
       const key = `${yil}-${hafta.toString().padStart(2, '0')}`
       if (!haftaMap.has(key)) haftaMap.set(key, { yil, hafta, personelToplam: new Map(), genelToplam: 0 })
@@ -386,12 +377,12 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
     return Array.from(haftaMap.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, v]) => ({ key, ...v }))
-  }, [kayitlar])
+  }, [kayitlarFiltreli])
 
   // "GENEL LİSTE" görünümü: aynı tarihte kim ne kadar harcamış — kesişenleri görmek için.
   const tarihMatrisi = useMemo(() => {
     const map = new Map<string, { tarih: string; personelToplam: Map<string, number>; genelToplam: number; kisiSayisi: number }>()
-    for (const k of kayitlar) {
+    for (const k of kayitlarFiltreli) {
       const gun = k.tarih.slice(0, 10)
       if (!map.has(gun)) map.set(gun, { tarih: gun, personelToplam: new Map(), genelToplam: 0, kisiSayisi: 0 })
       const giris = map.get(gun)!
@@ -400,13 +391,13 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
       giris.genelToplam += k.tutar
     }
     return Array.from(map.values()).sort((a, b) => b.tarih.localeCompare(a.tarih))
-  }, [kayitlar])
+  }, [kayitlarFiltreli])
 
   const personelToplamlari = useMemo(() => {
     const map = new Map<string, number>()
-    for (const k of kayitlar) map.set(k.personelAdi, (map.get(k.personelAdi) ?? 0) + k.tutar)
+    for (const k of kayitlarFiltreli) map.set(k.personelAdi, (map.get(k.personelAdi) ?? 0) + k.tutar)
     return map
-  }, [kayitlar])
+  }, [kayitlarFiltreli])
 
   // Haftalık özette ısı haritası tonu için: her personelin, kendi haftaları arasındaki en yüksek harcaması
   const personelHaftaMax = useMemo(() => {
@@ -420,8 +411,8 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
   }, [haftalikOzet])
 
   const aktifKayitlar = useMemo(
-    () => (aktifPersonel === '__tumu__' ? kayitlar : kayitlar.filter((k) => k.personelAdi === aktifPersonel)),
-    [kayitlar, aktifPersonel],
+    () => (aktifPersonel === '__tumu__' ? kayitlarFiltreli : kayitlarFiltreli.filter((k) => k.personelAdi === aktifPersonel)),
+    [kayitlarFiltreli, aktifPersonel],
   )
 
   // Aynı güne ait kayıtları grupla — tarihe göre azalan sırada, her grup içindeki kayıt sayısı ve gün toplamıyla.
@@ -447,9 +438,9 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
   const kesisenDetayKayitlar = useMemo(
     () =>
       kesisenDetayTarih
-        ? kayitlar.filter((k) => k.tarih.slice(0, 10) === kesisenDetayTarih).sort((a, b) => b.tutar - a.tutar)
+        ? kayitlarFiltreli.filter((k) => k.tarih.slice(0, 10) === kesisenDetayTarih).sort((a, b) => b.tutar - a.tutar)
         : [],
-    [kayitlar, kesisenDetayTarih],
+    [kayitlarFiltreli, kesisenDetayTarih],
   )
 
   const handleExcelExport = () => {
@@ -465,7 +456,7 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
     })
     const genelSatir: Record<string, string | number> = { Personel: 'GENEL TOPLAM' }
     haftalikOzet.forEach((h, i) => { genelSatir[haftaSutunlari[i]] = h.genelToplam })
-    genelSatir['GENEL TOPLAM'] = kayitlar.reduce((a, k) => a + k.tutar, 0)
+    genelSatir['GENEL TOPLAM'] = kayitlarFiltreli.reduce((a, k) => a + k.tutar, 0)
     haftaSatirlari.push(genelSatir)
     const wsHafta = XLSX.utils.json_to_sheet(haftaSatirlari)
     XLSX.utils.book_append_sheet(wb, wsHafta, 'Haftalık Liste')
@@ -484,11 +475,12 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
     // 3) Her personel için ayrı sekme (ham kayıtlar)
     const kullanilanSekmeler = new Set<string>(['haftalık liste', 'genel liste'])
     for (const p of personeller) {
-      const satirlar = kayitlar
+      const satirlar = kayitlarFiltreli
         .filter((k) => k.personelAdi === p)
         .sort((a, b) => a.tarih.localeCompare(b.tarih))
         .map((k) => ({
           Tarih: new Date(k.tarih).toLocaleDateString('tr-TR'),
+          Şantiye: k.santiyeAdi,
           Bölge: k.bolge ?? '',
           'Açıklama / Ne İçin': k.aciklama ?? '',
           'Tutar (TL)': k.tutar,
@@ -500,7 +492,7 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
     XLSX.writeFile(wb, 'personel-harcamalari.xlsx')
   }
 
-  const toplam = kayitlar.reduce((a, k) => a + k.tutar, 0)
+  const toplam = kayitlarFiltreli.reduce((a, k) => a + k.tutar, 0)
 
   if (locked === null || (locked === false && loading)) {
     return (
@@ -548,8 +540,20 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
       <CardContent className="p-4 space-y-5">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h4 className="font-semibold flex items-center gap-2"><Users className="h-4 w-4" /> Personel Harcamaları</h4>
-          <div className="flex gap-2">
-            {kayitlar.length > 0 && (
+          <div className="flex gap-2 flex-wrap items-center">
+            <Select value={santiyeFiltresi} onValueChange={setSantiyeFiltresi}>
+              <SelectTrigger className="w-auto min-w-[10rem] h-9">
+                <Building2 className="h-3.5 w-3.5 mr-1 shrink-0" />
+                <SelectValue placeholder="Şantiye" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__tumu__">Tüm Şantiyeler</SelectItem>
+                {santiyeler.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.ad}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {kayitlarFiltreli.length > 0 && (
               <Button size="sm" variant="outline" onClick={handleExcelExport}>
                 <Download className="h-3.5 w-3.5 mr-1" /> Excel
               </Button>
@@ -563,8 +567,12 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
           </div>
         </div>
 
-        {kayitlar.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Bu şantiyede henüz personel harcaması girilmemiş.</p>
+        {kayitlarFiltreli.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {kayitlar.length === 0
+              ? 'Henüz personel harcaması girilmemiş.'
+              : 'Bu şantiyede henüz personel harcaması girilmemiş.'}
+          </p>
         ) : (
           <>
             {/* ÜSTTE: Haftalık özet — personel x hafta */}
@@ -667,6 +675,7 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
                         <tr className="text-left text-muted-foreground border-b bg-muted/40">
                           <th className="py-2 px-2">Tarih</th>
                           {aktifPersonel === '__tumu__' && <th className="py-2 px-2">Personel</th>}
+                          <th className="py-2 px-2">Şantiye</th>
                           <th className="py-2 px-2">Bölge</th>
                           <th className="py-2 px-2">Açıklama / Ne İçin</th>
                           <th className="py-2 px-2 text-right">Tutar</th>
@@ -676,7 +685,7 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
                       <tbody>
                         {aktifKayitGruplari.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="py-4 text-center text-muted-foreground">Kayıt yok</td>
+                            <td colSpan={7} className="py-4 text-center text-muted-foreground">Kayıt yok</td>
                           </tr>
                         ) : (
                           aktifKayitGruplari.map((grup, gi) => (
@@ -708,6 +717,9 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
                                       </span>
                                     </td>
                                   )}
+                                  <td className="py-2 px-2">
+                                    <span className="inline-flex text-xs bg-muted rounded-full px-2 py-0.5 whitespace-nowrap">{k.santiyeAdi}</span>
+                                  </td>
                                   <td className="py-2 px-2">{k.bolge ?? '-'}</td>
                                   <td className="py-2 px-2">{k.aciklama ?? '-'}</td>
                                   <td className="py-2 px-2 text-right font-medium">{formatTL(k.tutar)}</td>
@@ -721,7 +733,7 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
                               ))}
                               {grup.kayitlar.length > 1 && (
                                 <tr className="bg-secondary/10 border-b-2 border-b-border">
-                                  <td colSpan={aktifPersonel === '__tumu__' ? 3 : 2} className="py-1 px-2 text-right text-xs text-muted-foreground italic">
+                                  <td colSpan={aktifPersonel === '__tumu__' ? 4 : 3} className="py-1 px-2 text-right text-xs text-muted-foreground italic">
                                     Gün toplamı
                                   </td>
                                   <td className="py-1 px-2 text-right text-sm font-semibold">{formatTL(grup.toplam)}</td>
@@ -735,7 +747,7 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
                       {aktifKayitlar.length > 0 && (
                         <tfoot>
                           <tr className="font-semibold">
-                            <td colSpan={aktifPersonel === '__tumu__' ? 4 : 3} className="py-2 px-2 text-right">Toplam</td>
+                            <td colSpan={aktifPersonel === '__tumu__' ? 5 : 4} className="py-2 px-2 text-right">Toplam</td>
                             <td className="py-2 px-2 text-right">{formatTL(aktifKayitlar.reduce((a, k) => a + k.tutar, 0))}</td>
                             <td />
                           </tr>
@@ -831,6 +843,7 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
               <thead>
                 <tr className="text-left text-muted-foreground border-b bg-muted/40">
                   <th className="py-2 px-2">Personel</th>
+                  <th className="py-2 px-2">Şantiye</th>
                   <th className="py-2 px-2">Bölge</th>
                   <th className="py-2 px-2">Açıklama / Ne İçin</th>
                   <th className="py-2 px-2 text-right">Tutar</th>
@@ -845,6 +858,9 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
                         <span className={renkAl(k.personelAdi).text}>{k.personelAdi}</span>
                       </span>
                     </td>
+                    <td className="py-2 px-2">
+                      <span className="inline-flex text-xs bg-muted rounded-full px-2 py-0.5 whitespace-nowrap">{k.santiyeAdi}</span>
+                    </td>
                     <td className="py-2 px-2">{k.bolge ?? '-'}</td>
                     <td className="py-2 px-2">{k.aciklama ?? '-'}</td>
                     <td className="py-2 px-2 text-right font-medium">{formatTL(k.tutar)}</td>
@@ -853,7 +869,7 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
               </tbody>
               <tfoot>
                 <tr className="font-semibold">
-                  <td colSpan={3} className="py-2 px-2 text-right">Toplam</td>
+                  <td colSpan={4} className="py-2 px-2 text-right">Toplam</td>
                   <td className="py-2 px-2 text-right">{formatTL(kesisenDetayKayitlar.reduce((a, k) => a + k.tutar, 0))}</td>
                 </tr>
               </tfoot>
@@ -895,6 +911,20 @@ function PersonelHarcamalariBolumu({ santiyeId, personelSecenekleri }: { santiye
                   )}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Şantiye *</Label>
+              <Select value={form.santiyeId} onValueChange={(v) => setForm((p) => ({ ...p, santiyeId: v }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Bu harcama hangi şantiyeye ait?" />
+                </SelectTrigger>
+                <SelectContent>
+                  {santiyeler.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.ad}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Bu harcama seçtiğiniz şantiyenin Proje Maliyeti'ne otomatik yansır.</p>
             </div>
             <div className="space-y-1.5">
               <Label>Bölge</Label>

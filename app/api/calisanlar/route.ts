@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { ad, telefon, aciklama, sirketId, baslangicTarihi } = body
+  const { ad, telefon, bolge, aciklama, sirketId, baslangicTarihi } = body
 
   if (!ad?.trim()) {
     return NextResponse.json({ error: 'Çalışan adı zorunludur' }, { status: 400 })
@@ -56,6 +56,7 @@ export async function POST(req: NextRequest) {
         data: {
           ad: ad.trim(),
           telefon: telefon?.trim() || null,
+          bolge: bolge?.trim() || null,
           aciklama: aciklama?.trim() || null,
         },
       })

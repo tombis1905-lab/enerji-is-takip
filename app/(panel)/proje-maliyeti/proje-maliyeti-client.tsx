@@ -120,6 +120,7 @@ interface Detay {
   araclar: ProjeAracSatir[]
   gunlukTakip: GunlukTakipSatir[]
   personelHarcamaToplam: number
+  akaryakitEtiketliToplam: number
   ozet: Ozet
 }
 
@@ -307,7 +308,7 @@ function SantiyeDetay({ santiyeId, onChange }: { santiyeId: string; onChange: ()
     detay.ozet.personelSayisi * detay.ozet.calisilanGun * detay.ozet.gunlukUcret +
     detay.ozet.digerHarcamalar +
     detay.personelHarcamaToplam
-  const akaryakitToplam = detay.ozet.akaryakitTutar
+  const akaryakitToplam = detay.ozet.akaryakitTutar + detay.akaryakitEtiketliToplam
   const toplamGider = malzemeToplam + aracToplam + nakliyeToplam + personelToplam + akaryakitToplam
   const netKarZarar = detay.ozet.gelir - toplamGider
 
@@ -353,7 +354,7 @@ function SantiyeDetay({ santiyeId, onChange }: { santiyeId: string; onChange: ()
         </Card>
       </Link>
 
-      <DigerMaliyetlerBolumu santiyeId={santiyeId} ozet={detay.ozet} onChange={refresh} />
+      <DigerMaliyetlerBolumu santiyeId={santiyeId} ozet={detay.ozet} akaryakitEtiketliToplam={detay.akaryakitEtiketliToplam} onChange={refresh} />
 
       {/* Bu şantiyeye ait kategori kırılımı */}
       <Card>
@@ -883,10 +884,12 @@ function AracBolumu({
 function DigerMaliyetlerBolumu({
   santiyeId,
   ozet,
+  akaryakitEtiketliToplam,
   onChange,
 }: {
   santiyeId: string
   ozet: Ozet
+  akaryakitEtiketliToplam: number
   onChange: () => void
 }) {
   const [form, setForm] = useState({
@@ -945,8 +948,15 @@ function DigerMaliyetlerBolumu({
           <h4 className="font-semibold flex items-center gap-2"><Fuel className="h-4 w-4" /> Akaryakıt</h4>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5"><Label>Miktar (Litre)</Label><Input type="number" value={form.akaryakitLitre} onChange={set('akaryakitLitre')} /></div>
-            <div className="space-y-1.5"><Label>Toplam Tutar (TL)</Label><Input type="number" value={form.akaryakitTutar} onChange={set('akaryakitTutar')} /></div>
+            <div className="space-y-1.5"><Label>Elle Girilen Tutar (TL)</Label><Input type="number" value={form.akaryakitTutar} onChange={set('akaryakitTutar')} /></div>
           </div>
+          {akaryakitEtiketliToplam > 0 && (
+            <p className="text-xs text-muted-foreground bg-muted/40 rounded-md px-2 py-1.5">
+              + Akaryakıt sayfasında bu şantiyeye etiketlenmiş fişler: <span className="font-semibold text-foreground">{formatTL(akaryakitEtiketliToplam)}</span> (otomatik eklenir)
+              <br />
+              Toplam akaryakıt gideri: <span className="font-semibold text-foreground">{formatTL(Number(form.akaryakitTutar || 0) + akaryakitEtiketliToplam)}</span>
+            </p>
+          )}
 
           <h4 className="font-semibold flex items-center gap-2 pt-2"><Wallet className="h-4 w-4" /> Gelir</h4>
           <div className="space-y-1.5"><Label>Proje Geliri (Hakediş / Fatura Tutarı)</Label><Input type="number" value={form.gelir} onChange={set('gelir')} /></div>

@@ -10,12 +10,14 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const aracId = searchParams.get('aracId')
+  const santiyeId = searchParams.get('santiyeId')
   const ay = searchParams.get('ay') // YYYY-MM format
   const page = parseInt(searchParams.get('page') || '1')
   const limit = parseInt(searchParams.get('limit') || '50')
 
   const where: any = {}
   if (aracId) where.aracId = aracId
+  if (santiyeId) where.santiyeId = santiyeId
   if (ay) {
     const [yil, ayNo] = ay.split('-').map(Number)
     where.tarih = {
@@ -30,6 +32,7 @@ export async function GET(req: NextRequest) {
       include: {
         arac: { select: { plaka: true, isim: true, marka: true, model: true } },
         user: { select: { name: true } },
+        santiye: { select: { id: true, ad: true } },
       },
       orderBy: { tarih: 'desc' },
       skip: (page - 1) * limit,
@@ -63,7 +66,7 @@ export async function POST(req: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: 'Yetkisiz' }, { status: 401 })
 
   const body = await req.json()
-  const { tarih, tutar, fisNo, aciklama, aracId } = body
+  const { tarih, tutar, fisNo, aciklama, aracId, santiyeId } = body
 
   if (!tarih || tutar === undefined || tutar === null || !aracId) {
     return NextResponse.json({ error: 'Tarih, tutar ve araç zorunludur' }, { status: 400 })
@@ -81,11 +84,13 @@ export async function POST(req: NextRequest) {
         fisNo: fisNo?.trim() || null,
         aciklama: aciklama?.trim() || null,
         aracId,
+        santiyeId: santiyeId?.trim() || null,
         userId: (session.user as any).id,
       },
       include: {
         arac: { select: { plaka: true, isim: true } },
         user: { select: { name: true } },
+        santiye: { select: { id: true, ad: true } },
       },
     })
     return NextResponse.json(kayit, { status: 201 })
