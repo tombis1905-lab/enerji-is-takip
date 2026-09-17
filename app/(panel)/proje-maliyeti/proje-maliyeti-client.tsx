@@ -53,9 +53,11 @@ import {
   Star,
   FolderOpen,
   PlusCircle,
+  Upload,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { SafeDate } from '@/components/safe-format'
+import * as XLSX from 'xlsx'
 
 function formatTL(n: number) {
   return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(n) + ' ₺'
@@ -538,6 +540,7 @@ function MalzemeBolumu({
   const [editId, setEditId] = useState<string | null>(null)
   const [editAuto, setEditAuto] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [ictekiEklemede, setIctekiEklemede] = useState(false)
   const [form, setForm] = useState({
     kalem: '', uzunluk: '', genislik: '', derinlik: '', gerekliMiktar: '',
     kullanilanMiktar: '', birim: '', birimFiyat: '', aciklama: '',
@@ -604,6 +607,59 @@ function MalzemeBolumu({
     onChange()
   }
 
+  // Excel'den (Kalem / Birim / Miktar / Birim Fiyat sütunlu) toplu kalem içe aktarma.
+  // Bir sözleşmenin birim fiyat teklif cetvelini tek tek elle girmek yerine
+  // dosyadan okuyup hepsini "gerekli miktar" olarak tek seferde ekler.
+  const handleTopluExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setIctekiEklemede(true)
+    try {
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { type: 'array' })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
+
+      const bul = (row: any, adaylar: string[]) => {
+        const anahtarlar = Object.keys(row)
+        for (const aday of adaylar) {
+          const k = anahtarlar.find((a) => a.trim().toLocaleLowerCase('tr-TR') === aday)
+          if (k !== undefined) return row[k]
+        }
+        return undefined
+      }
+
+      const kalemler = rows
+        .map((row) => ({
+          kalem: String(bul(row, ['kalem', 'açıklama', 'aciklama', 'iş kalemi']) ?? '').trim(),
+          birim: String(bul(row, ['birim', 'birimi']) ?? '').trim(),
+          gerekliMiktar: bul(row, ['miktar', 'gerekli miktar', 'gerekli']) ?? '',
+          birimFiyat: bul(row, ['birim fiyat', 'birimfiyat', 'fiyat']) ?? '',
+        }))
+        .filter((k) => k.kalem && k.birim)
+
+      if (kalemler.length === 0) {
+        toast.error('Dosyada okunabilir kalem bulunamadı. Sütun başlıkları: Kalem, Birim, Miktar (Birim Fiyat isteğe bağlı).')
+        return
+      }
+
+      const res = await fetch(`/api/proje-maliyeti/${santiyeId}/malzeme/toplu`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kalemler }),
+      })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d?.error ?? 'İçe aktarılamadı'); return }
+      const d = await res.json()
+      toast.success(`${d.eklenen} kalem eklendi`)
+      onChange()
+    } catch {
+      toast.error('Excel dosyası okunamadı')
+    } finally {
+      setIctekiEklemede(false)
+    }
+  }
+
   return (
     <Card>
       <CardContent className="p-4 space-y-3">
@@ -612,7 +668,24 @@ function MalzemeBolumu({
             <h4 className="font-semibold flex items-center gap-2"><Package className="h-4 w-4" /> Malzeme</h4>
             <p className="text-xs text-muted-foreground mt-0.5">İş Kayıtları'ndan gelen kalemler otomatik eklenir; yalnızca birim fiyatı elle girilir.</p>
           </div>
-          <Button size="sm" variant="outline" onClick={openNew}><Plus className="h-3.5 w-3.5 mr-1" /> Kalem Ekle</Button>
+          <div className="flex gap-2">
+            <input
+              id={`malzeme-excel-${santiyeId}`}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="hidden"
+              onChange={handleTopluExcel}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={ictekiEklemede}
+              onClick={() => document.getElementById(`malzeme-excel-${santiyeId}`)?.click()}
+            >
+              <Upload className="h-3.5 w-3.5 mr-1" /> {ictekiEklemede ? 'Ekleniyor...' : "Excel'den Toplu Ekle"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={openNew}><Plus className="h-3.5 w-3.5 mr-1" /> Kalem Ekle</Button>
+          </div>
         </div>
 
         {malzemeler.length === 0 ? (
