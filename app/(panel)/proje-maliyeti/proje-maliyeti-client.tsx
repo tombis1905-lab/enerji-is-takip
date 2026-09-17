@@ -47,6 +47,12 @@ import {
   PiggyBank,
   BarChart3,
   Receipt,
+  Lock,
+  Landmark,
+  Trees,
+  Star,
+  FolderOpen,
+  PlusCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { SafeDate } from '@/components/safe-format'
@@ -58,19 +64,38 @@ function formatTL(n: number) {
 // ---------------------------------------------------------------------------
 // Tipler
 // ---------------------------------------------------------------------------
+type Kategori = 'KASKI' | 'CEVRE_SEHIRCILIK' | 'OZEL' | null
+
+const KATEGORI_BILGI: Record<string, { etiket: string; icon: any; renk: string; bg: string; border: string }> = {
+  KASKI: { etiket: 'KASKİ İşleri', icon: Landmark, renk: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' },
+  CEVRE_SEHIRCILIK: { etiket: 'Çevre Şehircilik İşleri', icon: Trees, renk: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200' },
+  OZEL: { etiket: 'Özel İşler', icon: Star, renk: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200' },
+  KATEGORISIZ: { etiket: 'Kategorisiz', icon: FolderOpen, renk: 'text-muted-foreground', bg: 'bg-muted/40', border: 'border-muted' },
+}
+
 interface SantiyeSatir {
   id: string
   ad: string
   konum: string | null
   aktif: boolean
+  kategori: Kategori
   malzemeToplam: number
   aracToplam: number
   nakliyeToplam: number
   personelToplam: number
   akaryakitToplam: number
+  ekMaliyetToplam: number
   toplamGider: number
   gelir: number
   netKarZarar: number
+}
+
+interface EkMaliyet {
+  id: string
+  ad: string
+  tutar: number
+  aciklama: string | null
+  tarih: string
 }
 
 interface Malzeme {
@@ -121,6 +146,7 @@ interface Detay {
   gunlukTakip: GunlukTakipSatir[]
   personelHarcamaToplam: number
   akaryakitEtiketliToplam: number
+  ekMaliyetler: EkMaliyet[]
   ozet: Ozet
 }
 
@@ -135,6 +161,95 @@ interface AracSecenek {
 // Ana bileşen
 // ---------------------------------------------------------------------------
 export function ProjeMaliyetiClient() {
+  const [locked, setLocked] = useState<boolean | null>(null)
+  const [pin, setPin] = useState('')
+  const [pinError, setPinError] = useState('')
+  const [pinSubmitting, setPinSubmitting] = useState(false)
+
+  const checkLock = useCallback(() => {
+    fetch('/api/proje-maliyeti')
+      .then(async (r) => {
+        if (r.status === 401) {
+          const d = await r.json().catch(() => ({}))
+          if (d?.code === 'PIN_GEREKLI') { setLocked(true); return }
+        }
+        setLocked(false)
+      })
+      .catch(() => setLocked(true))
+  }, [])
+
+  useEffect(() => { checkLock() }, [checkLock])
+
+  const handlePinSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPinError('')
+    setPinSubmitting(true)
+    try {
+      const res = await fetch('/api/proje-maliyeti/dogrula', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin }),
+      })
+      if (!res.ok) { setPinError('PIN hatalı'); setPin(''); return }
+      setPin('')
+      setLocked(false)
+    } finally {
+      setPinSubmitting(false)
+    }
+  }
+
+  const handleLock = async () => {
+    await fetch('/api/proje-maliyeti/dogrula', { method: 'DELETE' })
+    setLocked(true)
+  }
+
+  if (locked === null) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />)}
+      </div>
+    )
+  }
+
+  if (locked) {
+    return (
+      <div className="max-w-sm mx-auto mt-16">
+        <FadeIn>
+          <Card>
+            <CardContent className="p-6 text-center space-y-4">
+              <div className="mx-auto w-12 h-12 rounded-full bg-secondary/10 flex items-center justify-center">
+                <Lock className="h-6 w-6 text-secondary" />
+              </div>
+              <div>
+                <h2 className="font-semibold">Proje Maliyeti Kilitli</h2>
+                <p className="text-sm text-muted-foreground">Bu bölüme girmek için PIN gerekiyor</p>
+              </div>
+              <form onSubmit={handlePinSubmit} className="space-y-2">
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  placeholder="PIN"
+                  className="text-center tracking-widest"
+                  autoFocus
+                />
+                {pinError && <p className="text-xs text-destructive">{pinError}</p>}
+                <Button type="submit" loading={pinSubmitting} className="w-full bg-secondary text-secondary-foreground hover:bg-secondary/90">
+                  Kilidi Aç
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </FadeIn>
+      </div>
+    )
+  }
+
+  return <ProjeMaliyetiIcerik onLock={handleLock} />
+}
+
+function ProjeMaliyetiIcerik({ onLock }: { onLock: () => void }) {
   const [santiyeler, setSantiyeler] = useState<SantiyeSatir[]>([])
   const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState<string>('')
@@ -161,13 +276,18 @@ export function ProjeMaliyetiClient() {
   return (
     <div className="space-y-6">
       <FadeIn>
-        <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Calculator className="h-6 w-6 text-secondary" /> Proje Maliyeti
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Şantiye bazında malzeme, araç, personel, nakliye, akaryakıt maliyeti ve kâr/zarar takibi
-          </p>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="font-display text-2xl font-bold tracking-tight flex items-center gap-2">
+              <Calculator className="h-6 w-6 text-secondary" /> Proje Maliyeti
+            </h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Şantiye bazında malzeme, araç, personel, nakliye, akaryakıt maliyeti ve kâr/zarar takibi
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={onLock}>
+            <Lock className="h-3.5 w-3.5 mr-1" /> Kilitle
+          </Button>
         </div>
       </FadeIn>
 
@@ -221,57 +341,68 @@ export function ProjeMaliyetiClient() {
             </div>
           </FadeIn>
 
-        <Accordion
-          type="single"
-          collapsible
-          value={openId}
-          onValueChange={setOpenId}
-          className="space-y-3"
-        >
-          {santiyeler.map((s) => (
-            <AccordionItem key={s.id} value={s.id} className="border rounded-xl overflow-hidden bg-card">
-              <AccordionTrigger className="px-5 py-4 hover:no-underline hover:bg-muted/50">
-                <div className="flex flex-1 items-center justify-between gap-4 pr-2">
-                  <div className="flex items-start gap-3 text-left">
-                    <div className="p-2 rounded-lg bg-primary/10 text-primary mt-0.5">
-                      <Building2 className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold">{s.ad}</h3>
-                      {s.konum && (
-                        <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
-                          <MapPin className="h-3 w-3" /> {s.konum}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-right hidden sm:block">
-                      <p className="text-xs text-muted-foreground">Toplam Gider</p>
-                      <p className="text-sm font-medium">{formatTL(s.toplamGider)}</p>
-                    </div>
-                    <Badge
-                      variant={s.netKarZarar > 0 ? 'default' : s.netKarZarar < 0 ? 'destructive' : 'outline'}
-                      className={s.netKarZarar > 0 ? 'bg-green-600 hover:bg-green-600' : ''}
-                    >
-                      {s.netKarZarar > 0 ? (
-                        <TrendingUp className="h-3 w-3 mr-1" />
-                      ) : s.netKarZarar < 0 ? (
-                        <TrendingDown className="h-3 w-3 mr-1" />
-                      ) : null}
-                      {formatTL(s.netKarZarar)}
-                    </Badge>
-                  </div>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="px-5 pb-5">
-                {openId === s.id && (
-                  <SantiyeDetay santiyeId={s.id} onChange={loadList} />
-                )}
-              </AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
+        <div className="space-y-6">
+          {(['KASKI', 'CEVRE_SEHIRCILIK', 'OZEL', 'KATEGORISIZ'] as const).map((kat) => {
+            const grup = santiyeler.filter((s) => (s.kategori ?? 'KATEGORISIZ') === kat)
+            if (grup.length === 0) return null
+            const bilgi = KATEGORI_BILGI[kat]
+            const Icon = bilgi.icon
+            return (
+              <div key={kat} className="space-y-3">
+                <h2 className={`text-base font-bold flex items-center gap-2 px-1 ${bilgi.renk}`}>
+                  <span className={`p-1.5 rounded-lg ${bilgi.bg} border ${bilgi.border}`}><Icon className="h-4 w-4" /></span>
+                  {bilgi.etiket}
+                  <span className="text-xs font-normal text-muted-foreground">({grup.length})</span>
+                </h2>
+                <Accordion type="single" collapsible value={openId} onValueChange={setOpenId} className="space-y-3">
+                  {grup.map((s) => (
+                    <AccordionItem key={s.id} value={s.id} className={`border rounded-xl overflow-hidden bg-card border-l-4 ${bilgi.border}`}>
+                      <AccordionTrigger className="px-5 py-4 hover:no-underline hover:bg-muted/50">
+                        <div className="flex flex-1 items-center justify-between gap-4 pr-2">
+                          <div className="flex items-start gap-3 text-left">
+                            <div className={`p-2 rounded-lg ${bilgi.bg} ${bilgi.renk} mt-0.5`}>
+                              <Building2 className="h-5 w-5" />
+                            </div>
+                            <div>
+                              <h3 className="font-semibold">{s.ad}</h3>
+                              {s.konum && (
+                                <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
+                                  <MapPin className="h-3 w-3" /> {s.konum}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="text-right hidden sm:block">
+                              <p className="text-xs text-muted-foreground">Toplam Gider</p>
+                              <p className="text-sm font-medium">{formatTL(s.toplamGider)}</p>
+                            </div>
+                            <Badge
+                              variant={s.netKarZarar > 0 ? 'default' : s.netKarZarar < 0 ? 'destructive' : 'outline'}
+                              className={s.netKarZarar > 0 ? 'bg-green-600 hover:bg-green-600' : ''}
+                            >
+                              {s.netKarZarar > 0 ? (
+                                <TrendingUp className="h-3 w-3 mr-1" />
+                              ) : s.netKarZarar < 0 ? (
+                                <TrendingDown className="h-3 w-3 mr-1" />
+                              ) : null}
+                              {formatTL(s.netKarZarar)}
+                            </Badge>
+                          </div>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="px-5 pb-5">
+                        {openId === s.id && (
+                          <SantiyeDetay santiyeId={s.id} onChange={loadList} />
+                        )}
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
+              </div>
+            )
+          })}
+        </div>
         </>
       )}
     </div>
@@ -309,15 +440,17 @@ function SantiyeDetay({ santiyeId, onChange }: { santiyeId: string; onChange: ()
     detay.ozet.digerHarcamalar +
     detay.personelHarcamaToplam
   const akaryakitToplam = detay.ozet.akaryakitTutar + detay.akaryakitEtiketliToplam
-  const toplamGider = malzemeToplam + aracToplam + nakliyeToplam + personelToplam + akaryakitToplam
+  const ekMaliyetToplam = detay.ekMaliyetler.reduce((a, k) => a + k.tutar, 0)
+  const toplamGider = malzemeToplam + aracToplam + nakliyeToplam + personelToplam + akaryakitToplam + ekMaliyetToplam
   const netKarZarar = detay.ozet.gelir - toplamGider
 
   const kirilim = [
-    { ad: 'Malzeme', tutar: malzemeToplam, icon: Package },
-    { ad: 'Araç Yevmiyesi', tutar: aracToplam, icon: Truck },
-    { ad: 'Nakliye', tutar: nakliyeToplam, icon: Truck },
-    { ad: 'Personel', tutar: personelToplam, icon: Users },
-    { ad: 'Akaryakıt', tutar: akaryakitToplam, icon: Fuel },
+    { ad: 'Malzeme', tutar: malzemeToplam, icon: Package, renk: 'bg-blue-500' },
+    { ad: 'Araç Yevmiyesi', tutar: aracToplam, icon: Truck, renk: 'bg-amber-500' },
+    { ad: 'Nakliye', tutar: nakliyeToplam, icon: Truck, renk: 'bg-orange-500' },
+    { ad: 'Personel', tutar: personelToplam, icon: Users, renk: 'bg-violet-500' },
+    { ad: 'Akaryakıt', tutar: akaryakitToplam, icon: Fuel, renk: 'bg-rose-500' },
+    { ad: 'Ek Maliyetler', tutar: ekMaliyetToplam, icon: PlusCircle, renk: 'bg-teal-500' },
   ]
   const kirilimMax = Math.max(1, ...kirilim.map((k) => k.tutar))
 
@@ -356,6 +489,8 @@ function SantiyeDetay({ santiyeId, onChange }: { santiyeId: string; onChange: ()
 
       <DigerMaliyetlerBolumu santiyeId={santiyeId} ozet={detay.ozet} akaryakitEtiketliToplam={detay.akaryakitEtiketliToplam} onChange={refresh} />
 
+      <EkMaliyetBolumu santiyeId={santiyeId} kalemler={detay.ekMaliyetler} onChange={refresh} />
+
       {/* Bu şantiyeye ait kategori kırılımı */}
       <Card>
         <CardContent className="p-4 space-y-3">
@@ -368,7 +503,7 @@ function SantiyeDetay({ santiyeId, onChange }: { santiyeId: string; onChange: ()
                 </div>
                 <div className="flex-1 h-2.5 rounded-full bg-muted overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-secondary"
+                    className={`h-full rounded-full ${k.renk}`}
                     style={{ width: `${(k.tutar / kirilimMax) * 100}%` }}
                   />
                 </div>
@@ -967,6 +1102,154 @@ function DigerMaliyetlerBolumu({
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 4. Ek Maliyet Kalemleri — Tom'un kendi eklediği serbest gider kalemleri
+//    (malzeme/araç/nakliye/personel/akaryakıt kategorilerine girmeyen her şey)
+// ---------------------------------------------------------------------------
+function EkMaliyetBolumu({
+  santiyeId,
+  kalemler,
+  onChange,
+}: {
+  santiyeId: string
+  kalemler: EkMaliyet[]
+  onChange: () => void
+}) {
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({ ad: '', tutar: '', aciklama: '', tarih: new Date().toISOString().slice(0, 10) })
+
+  const openNew = () => {
+    setEditId(null)
+    setForm({ ad: '', tutar: '', aciklama: '', tarih: new Date().toISOString().slice(0, 10) })
+    setDialogOpen(true)
+  }
+
+  const openEdit = (k: EkMaliyet) => {
+    setEditId(k.id)
+    setForm({ ad: k.ad, tutar: k.tutar.toString(), aciklama: k.aciklama ?? '', tarih: k.tarih.slice(0, 10) })
+    setDialogOpen(true)
+  }
+
+  const handleSave = async () => {
+    if (!form.ad.trim()) { toast.error('Kalem adı zorunludur'); return }
+    setSaving(true)
+    try {
+      const url = editId
+        ? `/api/proje-maliyeti/${santiyeId}/ek-maliyet/${editId}`
+        : `/api/proje-maliyeti/${santiyeId}/ek-maliyet`
+      const res = await fetch(url, {
+        method: editId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      if (!res.ok) { const d = await res.json(); toast.error(d?.error ?? 'Hata oluştu'); return }
+      toast.success(editId ? 'Kalem güncellendi' : 'Kalem eklendi')
+      setDialogOpen(false)
+      onChange()
+    } catch { toast.error('Hata oluştu') }
+    finally { setSaving(false) }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Bu ek maliyet kalemini silmek istediğinize emin misiniz?')) return
+    const res = await fetch(`/api/proje-maliyeti/${santiyeId}/ek-maliyet/${id}`, { method: 'DELETE' })
+    if (!res.ok) { toast.error('Silinemedi'); return }
+    toast.success('Silindi')
+    onChange()
+  }
+
+  const toplam = kalemler.reduce((a, k) => a + k.tutar, 0)
+
+  return (
+    <Card className="border-teal-200">
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h4 className="font-semibold flex items-center gap-2 text-teal-700"><PlusCircle className="h-4 w-4" /> Ek Maliyet Kalemleri</h4>
+            <p className="text-xs text-muted-foreground mt-0.5">Yukarıdaki kategorilere girmeyen her türlü ekstra gideri buradan ekleyebilirsiniz.</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={openNew}><Plus className="h-3.5 w-3.5 mr-1" /> Kalem Ekle</Button>
+        </div>
+
+        {kalemler.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Henüz ek maliyet kalemi eklenmemiş.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b">
+                  <th className="py-2 pr-2">Tarih</th>
+                  <th className="py-2 pr-2">Kalem</th>
+                  <th className="py-2 pr-2">Açıklama</th>
+                  <th className="py-2 pr-2">Tutar</th>
+                  <th className="py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {kalemler.map((k) => (
+                  <tr key={k.id} className="border-b last:border-0 group">
+                    <td className="py-2 pr-2"><SafeDate date={k.tarih} /></td>
+                    <td className="py-2 pr-2 font-medium">{k.ad}</td>
+                    <td className="py-2 pr-2 text-muted-foreground">{k.aciklama || '—'}</td>
+                    <td className="py-2 pr-2 font-medium">{formatTL(k.tutar)}</td>
+                    <td className="py-2">
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="icon-sm" onClick={() => openEdit(k)}><Pencil className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="icon-sm" onClick={() => handleDelete(k.id)} className="text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="font-semibold">
+                  <td colSpan={3} className="py-2 pr-2 text-right">Toplam Ek Maliyet</td>
+                  <td className="py-2 pr-2">{formatTL(toplam)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </CardContent>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{editId ? 'Ek Maliyet Düzenle' : 'Yeni Ek Maliyet Kalemi'}</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label>Kalem Adı *</Label>
+              <Input value={form.ad} onChange={(e) => setForm((p) => ({ ...p, ad: e.target.value }))} placeholder="Ör: İzin harcı, keşif bedeli" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label>Tutar (TL)</Label>
+                <Input type="number" value={form.tutar} onChange={(e) => setForm((p) => ({ ...p, tutar: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Tarih</Label>
+                <Input type="date" value={form.tarih} onChange={(e) => setForm((p) => ({ ...p, tarih: e.target.value }))} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Açıklama</Label>
+              <Input value={form.aciklama} onChange={(e) => setForm((p) => ({ ...p, aciklama: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Vazgeç</Button>
+            <Button onClick={handleSave} loading={saving} className="bg-teal-600 hover:bg-teal-600/90 text-white">
+              {editId ? 'Güncelle' : 'Ekle'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
   )
 }
 

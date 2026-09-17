@@ -12,7 +12,7 @@ import { useMounted } from '@/components/client-only'
  * locale/timezone after mount (safe: wrapped in suppressHydrationWarning).
  */
 
-const DEFAULT_LOCALE = 'en-US'
+const DEFAULT_LOCALE = 'tr-TR'
 const DEFAULT_TIME_ZONE = 'UTC'
 
 type SafeDateProps = {

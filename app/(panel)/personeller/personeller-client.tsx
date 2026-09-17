@@ -14,20 +14,41 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { FadeIn, Stagger, StaggerItem } from '@/components/ui/animate'
-import { Users, Plus, Trash2, Building2, History, LogOut, X, Phone, Pencil, Check, MapPin, CalendarClock } from 'lucide-react'
+import { Users, Plus, Trash2, Building2, History, LogOut, X, Phone, Pencil, Check, MapPin, CalendarClock, Download, HardHat } from 'lucide-react'
 import { toast } from 'sonner'
 import { SafeDate } from '@/components/safe-format'
+import * as XLSX from 'xlsx'
+
+type PersonelTipi = 'ASIL' | 'TASERON'
 
 interface Calisan {
   id: string
   ad: string
   telefon: string | null
   bolge: string | null
+  bolgeBaslangicTarihi: string | null
+  personelTipi: PersonelTipi
   aciklama: string | null
   aktif: boolean
   aktifSirketId: string | null
   aktifSirket: string | null
   aktifSirketBaslangic: string | null
+}
+
+// Asıl personel / taşeron ayrımı için renkli etiket
+function PersonelTipiRozet({ tip }: { tip: PersonelTipi }) {
+  if (tip === 'TASERON') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5 shrink-0">
+        <HardHat className="h-2.5 w-2.5" /> Taşeron
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-1.5 py-0.5 shrink-0">
+      Asıl Personel
+    </span>
+  )
 }
 
 interface Sirket {
@@ -47,8 +68,16 @@ interface GunlukKonum {
   aciklama: string | null
   calisanId: string
   calisanAdi: string
-  santiyeId: string
+  santiyeId: string | null
   santiyeAdi: string
+}
+
+const OZEL_DEGER = '__ozel__'
+
+const tarihstenGunSayisi = (t: string | null) => {
+  if (!t) return null
+  const fark = Date.now() - new Date(t).getTime()
+  return Math.max(0, Math.floor(fark / 86400000))
 }
 
 interface GecmisKaydi {
@@ -76,10 +105,14 @@ export function PersonellerClient() {
   const [gunlukFilterCalisanId, setGunlukFilterCalisanId] = useState('__tumu__')
   const [gunlukFilterSantiyeId, setGunlukFilterSantiyeId] = useState('__tumu__')
 
+  // Asıl personel / taşeron filtresi
+  const [tipFiltre, setTipFiltre] = useState<'TUMU' | 'ASIL' | 'TASERON'>('TUMU')
+
   // Yeni çalışan ekle
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [form, setForm] = useState({ ad: '', telefon: '', bolge: '', aciklama: '', sirketId: '', baslangicTarihi: '' })
+  const [form, setForm] = useState({ ad: '', telefon: '', bolge: '', aciklama: '', sirketId: '', baslangicTarihi: '', personelTipi: 'ASIL' as PersonelTipi })
   const [saving, setSaving] = useState(false)
+  const [tipSaving, setTipSaving] = useState(false)
 
   // Detay / Şirket Geçmişi dialog
   const [gecmisDialogOpen, setGecmisDialogOpen] = useState(false)
@@ -136,13 +169,16 @@ export function PersonellerClient() {
   const handleGunlukSave = async () => {
     if (!gunlukForm.calisanId) { toast.error('Personel seçiniz'); return }
     if (!gunlukForm.tarih) { toast.error('Tarih giriniz'); return }
-    if (!gunlukForm.santiyeId) { toast.error('Şantiye seçiniz'); return }
+    if (!gunlukForm.santiyeId) { toast.error('Şantiye seçiniz (ya da "Özel")'); return }
     setGunlukSaving(true)
     try {
       const res = await fetch('/api/calisanlar/gunluk-konum', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(gunlukForm),
+        body: JSON.stringify({
+          ...gunlukForm,
+          santiyeId: gunlukForm.santiyeId === OZEL_DEGER ? null : gunlukForm.santiyeId,
+        }),
       })
       if (!res.ok) { const d = await res.json(); toast.error(d?.error ?? 'Hata oluştu'); return }
       toast.success('Kayıt eklendi')
@@ -160,14 +196,28 @@ export function PersonellerClient() {
     loadGunlukKonumlar()
   }
 
+  const handleGunlukExcelExport = () => {
+    const rows = gunlukKonumlarFiltreli.map((k) => ({
+      'Tarih': new Date(k.tarih).toLocaleDateString('tr-TR'),
+      'Personel': k.calisanAdi,
+      'Şantiye': k.santiyeAdi,
+      'Açıklama': k.aciklama || '',
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Puantaj')
+    XLSX.writeFile(wb, `puantaj_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
+
   const gunlukKonumlarFiltreli = gunlukKonumlar.filter((k) => {
     if (gunlukFilterCalisanId !== '__tumu__' && k.calisanId !== gunlukFilterCalisanId) return false
-    if (gunlukFilterSantiyeId !== '__tumu__' && k.santiyeId !== gunlukFilterSantiyeId) return false
+    if (gunlukFilterSantiyeId === OZEL_DEGER && k.santiyeId !== null) return false
+    if (gunlukFilterSantiyeId !== '__tumu__' && gunlukFilterSantiyeId !== OZEL_DEGER && k.santiyeId !== gunlukFilterSantiyeId) return false
     return true
   })
 
   const openNew = () => {
-    setForm({ ad: '', telefon: '', bolge: '', aciklama: '', sirketId: '', baslangicTarihi: new Date().toISOString().slice(0, 10) })
+    setForm({ ad: '', telefon: '', bolge: '', aciklama: '', sirketId: '', baslangicTarihi: new Date().toISOString().slice(0, 10), personelTipi: 'ASIL' })
     setDialogOpen(true)
   }
 
@@ -186,6 +236,7 @@ export function PersonellerClient() {
           telefon: form.telefon,
           bolge: form.bolge,
           aciklama: form.aciklama,
+          personelTipi: form.personelTipi,
           ...(form.sirketId ? { sirketId: form.sirketId, baslangicTarihi: form.baslangicTarihi } : {}),
         }),
       })
@@ -355,6 +406,22 @@ export function PersonellerClient() {
     finally { setBolgeSaving(false) }
   }
 
+  const handleTipDegistir = async (yeniTip: PersonelTipi) => {
+    if (!gecmisCalisan) return
+    setTipSaving(true)
+    try {
+      const res = await fetch(`/api/calisanlar/${gecmisCalisan.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ personelTipi: yeniTip }),
+      })
+      if (!res.ok) { toast.error('Güncellenemedi'); return }
+      toast.success('Personel tipi güncellendi')
+      refreshGecmis()
+    } catch { toast.error('Hata oluştu') }
+    finally { setTipSaving(false) }
+  }
+
   const handleCalisanDelete = async () => {
     if (!gecmisCalisan) return
     if (!confirm(`${gecmisCalisan.ad} kaydını tamamen silmek istediğinize emin misiniz?`)) return
@@ -371,19 +438,34 @@ export function PersonellerClient() {
     } catch { toast.error('Hata oluştu') }
   }
 
-  const sirketteOlmayanlar = calisanlar.filter((c) => !c.aktifSirketId)
+  const calisanlarFiltreli = calisanlar.filter((c) => tipFiltre === 'TUMU' || c.personelTipi === tipFiltre)
+  const sirketteOlmayanlar = calisanlarFiltreli.filter((c) => !c.aktifSirketId)
+  const asilSayisi = calisanlar.filter((c) => c.personelTipi !== 'TASERON').length
+  const taseronSayisi = calisanlar.filter((c) => c.personelTipi === 'TASERON').length
 
   return (
     <div className="space-y-6">
       <FadeIn>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="font-display text-2xl font-bold tracking-tight">Personeller</h1>
             <p className="text-muted-foreground text-sm mt-1">Şirket bazlı çalışan listesi ve geçmişi</p>
           </div>
-          <Button onClick={openNew} className="bg-secondary text-secondary-foreground hover:bg-secondary/90">
-            <Plus className="h-4 w-4 mr-2" /> Çalışan Ekle
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={tipFiltre} onValueChange={(v) => setTipFiltre(v as any)}>
+              <SelectTrigger className="w-auto min-w-[10rem] h-9">
+                <SelectValue placeholder="Personel Tipi" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="TUMU">Tümü ({calisanlar.length})</SelectItem>
+                <SelectItem value="ASIL">Asıl Personel ({asilSayisi})</SelectItem>
+                <SelectItem value="TASERON">Taşeron ({taseronSayisi})</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button onClick={openNew} className="bg-secondary text-secondary-foreground hover:bg-secondary/90">
+              <Plus className="h-4 w-4 mr-2" /> Çalışan Ekle
+            </Button>
+          </div>
         </div>
       </FadeIn>
 
@@ -401,7 +483,7 @@ export function PersonellerClient() {
       ) : (
         <Stagger className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" staggerDelay={0.05}>
           {sirketler.map((s) => {
-            const bunlar = calisanlar.filter((c) => c.aktifSirketId === s.id)
+            const bunlar = calisanlarFiltreli.filter((c) => c.aktifSirketId === s.id)
             return (
               <StaggerItem key={s.id}>
                 <Card className="h-full">
@@ -424,10 +506,13 @@ export function PersonellerClient() {
                           className="w-full flex items-center justify-between gap-2 rounded-md px-2 py-2 text-left hover:bg-muted/50 transition-colors"
                         >
                           <span className="min-w-0">
-                            <span className="font-medium truncate block">{c.ad}</span>
+                            <span className="font-medium truncate flex items-center gap-1.5">{c.ad} <PersonelTipiRozet tip={c.personelTipi} /></span>
                             {c.bolge && (
                               <span className="text-xs text-secondary flex items-center gap-1 mt-0.5">
                                 <MapPin className="h-3 w-3 shrink-0" /> {c.bolge}
+                                {tarihstenGunSayisi(c.bolgeBaslangicTarihi) !== null && (
+                                  <span className="text-muted-foreground">· {tarihstenGunSayisi(c.bolgeBaslangicTarihi)} gündür</span>
+                                )}
                               </span>
                             )}
                           </span>
@@ -459,10 +544,13 @@ export function PersonellerClient() {
                 className="w-full flex items-center justify-between gap-2 rounded-md px-2 py-2 text-left hover:bg-muted/50 transition-colors"
               >
                 <span className="min-w-0">
-                  <span className="font-medium truncate block">{c.ad}</span>
+                  <span className="font-medium truncate flex items-center gap-1.5">{c.ad} <PersonelTipiRozet tip={c.personelTipi} /></span>
                   {c.bolge && (
                     <span className="text-xs text-secondary flex items-center gap-1 mt-0.5">
                       <MapPin className="h-3 w-3 shrink-0" /> {c.bolge}
+                      {tarihstenGunSayisi(c.bolgeBaslangicTarihi) !== null && (
+                        <span className="text-muted-foreground">· {tarihstenGunSayisi(c.bolgeBaslangicTarihi)} gündür</span>
+                      )}
                     </span>
                   )}
                 </span>
@@ -491,9 +579,16 @@ export function PersonellerClient() {
               <CardTitle className="text-base flex items-center gap-2">
                 <CalendarClock className="h-4 w-4 text-secondary" /> Puantaj — Günlük Çalışma Yeri
               </CardTitle>
-              <Button size="sm" onClick={openGunlukNew} className="bg-secondary text-secondary-foreground hover:bg-secondary/90">
-                <Plus className="h-3.5 w-3.5 mr-1" /> Kayıt Ekle
-              </Button>
+              <div className="flex items-center gap-2">
+                {gunlukKonumlarFiltreli.length > 0 && (
+                  <Button size="sm" variant="outline" onClick={handleGunlukExcelExport}>
+                    <Download className="h-3.5 w-3.5 mr-1" /> Excel
+                  </Button>
+                )}
+                <Button size="sm" onClick={openGunlukNew} className="bg-secondary text-secondary-foreground hover:bg-secondary/90">
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Kayıt Ekle
+                </Button>
+              </div>
             </div>
             <p className="text-xs text-muted-foreground pt-1">
               Bir değişiklik eklemediğin sürece personel, Personeller listesindeki bölgesinde çalışıyor sayılır.
@@ -522,6 +617,7 @@ export function PersonellerClient() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__tumu__">Tüm Şantiyeler</SelectItem>
+                  <SelectItem value={OZEL_DEGER}>Özel</SelectItem>
                   {santiyeler.map((s) => (
                     <SelectItem key={s.id} value={s.id}>{s.ad}</SelectItem>
                   ))}
@@ -553,7 +649,15 @@ export function PersonellerClient() {
                         <td className="py-2 px-2"><SafeDate date={k.tarih} /></td>
                         <td className="py-2 px-2 font-medium">{k.calisanAdi}</td>
                         <td className="py-2 px-2">
-                          <span className="inline-flex text-xs bg-secondary/10 text-secondary rounded-full px-2 py-0.5">{k.santiyeAdi}</span>
+                          <span
+                            className={
+                              k.santiyeId
+                                ? 'inline-flex text-xs bg-secondary/10 text-secondary rounded-full px-2 py-0.5'
+                                : 'inline-flex text-xs bg-muted text-muted-foreground rounded-full px-2 py-0.5'
+                            }
+                          >
+                            {k.santiyeAdi}
+                          </span>
                         </td>
                         <td className="py-2 px-2 text-muted-foreground">{k.aciklama || '—'}</td>
                         <td className="py-2 px-2 text-right">
@@ -606,6 +710,7 @@ export function PersonellerClient() {
                     <SelectValue placeholder="Şantiye" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={OZEL_DEGER}>Özel (şantiye dışı)</SelectItem>
                     {santiyeler.map((s) => (
                       <SelectItem key={s.id} value={s.id}>{s.ad}</SelectItem>
                     ))}
@@ -615,7 +720,11 @@ export function PersonellerClient() {
             </div>
             <div className="space-y-1.5">
               <Label>Açıklama</Label>
-              <Input value={gunlukForm.aciklama} onChange={(e) => setGunlukForm((p) => ({ ...p, aciklama: e.target.value }))} placeholder="Opsiyonel" />
+              <Input
+                value={gunlukForm.aciklama}
+                onChange={(e) => setGunlukForm((p) => ({ ...p, aciklama: e.target.value }))}
+                placeholder={gunlukForm.santiyeId === OZEL_DEGER ? 'Ör: ofiste, araba yıkandı' : 'Opsiyonel'}
+              />
             </div>
           </div>
           <DialogFooter>
@@ -657,6 +766,16 @@ export function PersonellerClient() {
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, bolge: e.target.value }))}
                 placeholder="Ör: Botaş şantiyesi"
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Personel Tipi</Label>
+              <Select value={form.personelTipi} onValueChange={(v) => setForm(p => ({ ...p, personelTipi: v as PersonelTipi }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ASIL">Asıl Personel</SelectItem>
+                  <SelectItem value="TASERON">Taşeron</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-2 gap-3 border-t pt-3">
               <div className="col-span-2">
@@ -740,6 +859,22 @@ export function PersonellerClient() {
                 )}
               </div>
 
+              {/* Personel tipi */}
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground flex items-center gap-1"><HardHat className="h-3 w-3" /> Personel Tipi</p>
+                <Select
+                  value={gecmisCalisan?.personelTipi ?? 'ASIL'}
+                  onValueChange={(v) => handleTipDegistir(v as PersonelTipi)}
+                  disabled={tipSaving}
+                >
+                  <SelectTrigger className="w-40 h-8"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ASIL">Asıl Personel</SelectItem>
+                    <SelectItem value="TASERON">Taşeron</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* Bölge */}
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <div className="flex-1 min-w-0">
@@ -758,7 +893,14 @@ export function PersonellerClient() {
                       </Button>
                     </div>
                   ) : (
-                    <p className="font-semibold truncate">{gecmisCalisan?.bolge || 'Belirtilmemiş'}</p>
+                    <>
+                      <p className="font-semibold truncate">{gecmisCalisan?.bolge || 'Belirtilmemiş'}</p>
+                      {gecmisCalisan?.bolge && tarihstenGunSayisi(gecmisCalisan.bolgeBaslangicTarihi) !== null && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {tarihStr(gecmisCalisan.bolgeBaslangicTarihi)} tarihinden beri ({tarihstenGunSayisi(gecmisCalisan.bolgeBaslangicTarihi)} gün)
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
                 {!editingBolge && (

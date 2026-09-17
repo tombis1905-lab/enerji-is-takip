@@ -31,6 +31,9 @@ model Santiye {
   ad          String
   konum       String?
   aktif       Boolean   @default(true)
+  // Proje Maliyeti sayfasında üst düzey gruplama: KASKI / CEVRE_SEHIRCILIK / OZEL.
+  // Boşsa "Kategorisiz" altında gösterilir.
+  kategori    String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   isKayitlari IsKaydi[]
@@ -40,6 +43,7 @@ model Santiye {
   projeAracGunleri   ProjeAracGun[]
   projeMaliyetOzeti  ProjeMaliyetOzet?
   projePersonelHarcamalari ProjePersonelHarcama[]
+  projeEkMaliyetleri ProjeEkMaliyet[]
   akaryakitKayitlari AkaryakitKaydi[]
   calisanGunlukKonumlari CalisanGunlukKonum[]
 }
@@ -253,6 +257,8 @@ model Calisan {
   // bolge alanı en son NE ZAMAN bu değere ayarlandı (ilk atamada ya da bolge
   // değiştirildiğinde güncellenir) — "kaç gündür bu bölgede" hesaplamak için.
   bolgeBaslangicTarihi DateTime?
+  // ASIL = bizim kendi personelimiz, TASERON = taşeron firma personeli
+  personelTipi  String           @default("ASIL")
   aciklama      String?
   aktif         Boolean          @default(true)
   createdAt     DateTime         @default(now())
@@ -537,4 +543,21 @@ model ProjeMaliyetOzet {
 
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+}
+
+// Tom'un Proje Maliyeti'ne kendi eklediği serbest/ekstra maliyet kalemleri
+// (yukarıdaki sabit kategorilere (malzeme/araç/nakliye/personel/akaryakıt)
+// girmeyen her türlü ek gider) — toplam gidere doğrudan eklenir.
+model ProjeEkMaliyet {
+  id        String   @id @default(cuid())
+  santiyeId String
+  santiye   Santiye  @relation(fields: [santiyeId], references: [id], onDelete: Cascade)
+  ad        String
+  tutar     Float    @default(0)
+  aciklama  String?
+  tarih     DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([santiyeId])
 }

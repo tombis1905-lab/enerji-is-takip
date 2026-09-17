@@ -6,16 +6,26 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { FadeIn, Stagger, StaggerItem } from '@/components/ui/animate'
-import { Building2, Plus, MapPin, Pencil, Trash2, ClipboardList, CheckCircle2 } from 'lucide-react'
+import { Building2, Plus, MapPin, Pencil, Trash2, ClipboardList, CheckCircle2, Tag } from 'lucide-react'
 import { toast } from 'sonner'
+
+type Kategori = 'KASKI' | 'CEVRE_SEHIRCILIK' | 'OZEL' | null
 
 interface Santiye {
   id: string
   ad: string
   konum: string | null
   aktif: boolean
+  kategori: Kategori
   _count?: { isKayitlari: number }
+}
+
+const KATEGORI_BILGI: Record<string, { etiket: string; className: string }> = {
+  KASKI: { etiket: 'KASKİ İşleri', className: 'text-blue-700 bg-blue-50 border-blue-200' },
+  CEVRE_SEHIRCILIK: { etiket: 'Çevre Şehircilik İşleri', className: 'text-green-700 bg-green-50 border-green-200' },
+  OZEL: { etiket: 'Özel İşler', className: 'text-purple-700 bg-purple-50 border-purple-200' },
 }
 
 export function SantiyelerClient({ role }: { role: string }) {
@@ -23,7 +33,7 @@ export function SantiyelerClient({ role }: { role: string }) {
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState({ ad: '', konum: '' })
+  const [form, setForm] = useState<{ ad: string; konum: string; kategori: Kategori }>({ ad: '', konum: '', kategori: null })
   const [saving, setSaving] = useState(false)
   const isAdmin = role === 'ADMIN'
 
@@ -39,13 +49,13 @@ export function SantiyelerClient({ role }: { role: string }) {
 
   const openNew = () => {
     setEditId(null)
-    setForm({ ad: '', konum: '' })
+    setForm({ ad: '', konum: '', kategori: null })
     setDialogOpen(true)
   }
 
   const openEdit = (s: Santiye) => {
     setEditId(s.id)
-    setForm({ ad: s.ad, konum: s.konum ?? '' })
+    setForm({ ad: s.ad, konum: s.konum ?? '', kategori: s.kategori ?? null })
     setDialogOpen(true)
   }
 
@@ -58,7 +68,7 @@ export function SantiyelerClient({ role }: { role: string }) {
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ad: form.ad.trim(), konum: form.konum.trim() || null }),
+        body: JSON.stringify({ ad: form.ad.trim(), konum: form.konum.trim() || null, kategori: form.kategori }),
       })
       if (!res.ok) {
         const data = await res.json()
@@ -151,6 +161,11 @@ export function SantiyelerClient({ role }: { role: string }) {
                           >
                             {s.aktif ? 'Devam Ediyor' : (<><CheckCircle2 className="h-2.5 w-2.5" /> Tamamlandı</>)}
                           </span>
+                          {s.kategori && KATEGORI_BILGI[s.kategori] && (
+                            <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold rounded-full px-1.5 py-0.5 border ${KATEGORI_BILGI[s.kategori].className}`}>
+                              <Tag className="h-2.5 w-2.5" /> {KATEGORI_BILGI[s.kategori].etiket}
+                            </span>
+                          )}
                         </h3>
                         {s.konum && (
                           <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
@@ -204,6 +219,18 @@ export function SantiyelerClient({ role }: { role: string }) {
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, konum: e.target.value }))}
                 placeholder="Ör: Ankara, Polatlı"
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Kategori (Proje Maliyeti gruplaması)</Label>
+              <Select value={form.kategori ?? '__yok__'} onValueChange={(v) => setForm(p => ({ ...p, kategori: v === '__yok__' ? null : v as Kategori }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__yok__">Kategorisiz</SelectItem>
+                  <SelectItem value="KASKI">KASKİ İşleri</SelectItem>
+                  <SelectItem value="CEVRE_SEHIRCILIK">Çevre Şehircilik İşleri</SelectItem>
+                  <SelectItem value="OZEL">Özel İşler</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

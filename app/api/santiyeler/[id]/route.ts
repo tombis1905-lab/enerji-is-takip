@@ -17,7 +17,8 @@ export async function PUT(
 
     const { id } = await params
     const body = await request.json()
-    const { ad, konum, aktif } = body ?? {}
+    const { ad, konum, aktif, kategori } = body ?? {}
+    const gecerliKategoriler = ["KASKI", "CEVRE_SEHIRCILIK", "OZEL"]
 
     const santiye = await prisma.santiye.update({
       where: { id },
@@ -25,6 +26,7 @@ export async function PUT(
         ...(ad !== undefined && { ad: String(ad) }),
         ...(konum !== undefined && { konum: konum ? String(konum) : null }),
         ...(aktif !== undefined && { aktif: Boolean(aktif) }),
+        ...(kategori !== undefined && { kategori: gecerliKategoriler.includes(kategori) ? kategori : null }),
       },
     })
     return NextResponse.json(santiye)

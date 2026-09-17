@@ -29,11 +29,16 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { ad, konum } = body ?? {}
+    const { ad, konum, kategori } = body ?? {}
     if (!ad) return NextResponse.json({ error: "Şantiye adı gerekli" }, { status: 400 })
+    const gecerliKategoriler = ["KASKI", "CEVRE_SEHIRCILIK", "OZEL"]
 
     const santiye = await prisma.santiye.create({
-      data: { ad: String(ad), konum: konum ? String(konum) : null },
+      data: {
+        ad: String(ad),
+        konum: konum ? String(konum) : null,
+        kategori: gecerliKategoriler.includes(kategori) ? kategori : null,
+      },
     })
     return NextResponse.json(santiye, { status: 201 })
   } catch (error: any) {

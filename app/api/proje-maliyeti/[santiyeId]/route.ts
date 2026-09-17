@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
+import { pmTokenGecerliMi, PM_COOKIE_NAME } from '@/lib/proje-maliyeti-auth'
 
 async function requireAdmin() {
   const session = await auth()
@@ -12,16 +13,24 @@ async function requireAdmin() {
   return session
 }
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ santiyeId: string }> }) {
+function pmErisimVarMi(req: NextRequest, session: any) {
+  const userId = (session.user as any).id as string
+  return pmTokenGecerliMi(req.cookies.get(PM_COOKIE_NAME)?.value, userId)
+}
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ santiyeId: string }> }) {
   const session = await requireAdmin()
   if (!session) return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 })
+  if (!pmErisimVarMi(req, session)) {
+    return NextResponse.json({ error: 'PIN gerekli', code: 'PIN_GEREKLI' }, { status: 401 })
+  }
 
   const { santiyeId } = await params
 
   const santiye = await prisma.santiye.findUnique({ where: { id: santiyeId } })
   if (!santiye) return NextResponse.json({ error: 'Şantiye bulunamadı' }, { status: 404 })
 
-  const [malzemeler, projeAraclar, aracGunleri, ozet, personelHarcamaToplamAgg, akaryakitEtiketliAgg] = await Promise.all([
+  const [malzemeler, projeAraclar, aracGunleri, ozet, personelHarcamaToplamAgg, akaryakitEtiketliAgg, ekMaliyetler] = await Promise.all([
     prisma.projeMalzeme.findMany({
       where: { santiyeId },
       orderBy: [{ siraNo: 'asc' }, { createdAt: 'asc' }],
@@ -40,6 +49,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ san
     prisma.projePersonelHarcama.aggregate({ where: { santiyeId }, _sum: { tutar: true } }),
     // Bu şantiyeye etiketlenmiş akaryakıt fişlerinin toplamı (Akaryakıt sayfasından).
     prisma.akaryakitKaydi.aggregate({ where: { santiyeId }, _sum: { tutar: true } }),
+    // Tom'un kendi eklediği serbest ek maliyet kalemleri.
+    prisma.projeEkMaliyet.findMany({ where: { santiyeId }, orderBy: { tarih: 'desc' } }),
   ])
   const personelHarcamaToplam = personelHarcamaToplamAgg._sum.tutar ?? 0
   const akaryakitEtiketliToplam = akaryakitEtiketliAgg._sum.tutar ?? 0
@@ -75,6 +86,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ san
     gunlukTakip,
     personelHarcamaToplam,
     akaryakitEtiketliToplam,
+    ekMaliyetler,
     ozet: ozet ?? {
       gelir: 0,
       seferSayisi: 0,
@@ -92,6 +104,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ san
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ santiyeId: string }> }) {
   const session = await requireAdmin()
   if (!session) return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 })
+  if (!pmErisimVarMi(req, session)) {
+    return NextResponse.json({ error: 'PIN gerekli', code: 'PIN_GEREKLI' }, { status: 401 })
+  }
 
   const { santiyeId } = await params
   const santiye = await prisma.santiye.findUnique({ where: { id: santiyeId } })

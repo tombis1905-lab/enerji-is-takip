@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { ad, telefon, bolge, aciklama, sirketId, baslangicTarihi } = body
+  const { ad, telefon, bolge, aciklama, sirketId, baslangicTarihi, personelTipi } = body
 
   if (!ad?.trim()) {
     return NextResponse.json({ error: 'Çalışan adı zorunludur' }, { status: 400 })
@@ -52,11 +52,14 @@ export async function POST(req: NextRequest) {
 
   try {
     const calisan = await prisma.$transaction(async (tx) => {
+      const bolgeDeger = bolge?.trim() || null
       const yeni = await tx.calisan.create({
         data: {
           ad: ad.trim(),
           telefon: telefon?.trim() || null,
-          bolge: bolge?.trim() || null,
+          bolge: bolgeDeger,
+          bolgeBaslangicTarihi: bolgeDeger ? new Date() : null,
+          personelTipi: personelTipi === 'TASERON' ? 'TASERON' : 'ASIL',
           aciklama: aciklama?.trim() || null,
         },
       })

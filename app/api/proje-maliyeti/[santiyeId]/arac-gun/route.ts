@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
+import { pmTokenGecerliMi, PM_COOKIE_NAME } from '@/lib/proje-maliyeti-auth'
 
 // Body: { tarih: 'YYYY-MM-DD', calisanAracIdler: string[] }
 // O tarih için, bu şantiyede takip edilen HER araca bir kayıt yazılır:
@@ -11,6 +12,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ san
   const session = await auth()
   if (!session?.user || (session.user as any).role !== 'ADMIN') {
     return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 })
+  }
+  if (!pmTokenGecerliMi(req.cookies.get(PM_COOKIE_NAME)?.value, (session.user as any).id)) {
+    return NextResponse.json({ error: 'PIN gerekli', code: 'PIN_GEREKLI' }, { status: 401 })
   }
 
   const { santiyeId } = await params
@@ -48,6 +52,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ s
   const session = await auth()
   if (!session?.user || (session.user as any).role !== 'ADMIN') {
     return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 })
+  }
+  if (!pmTokenGecerliMi(req.cookies.get(PM_COOKIE_NAME)?.value, (session.user as any).id)) {
+    return NextResponse.json({ error: 'PIN gerekli', code: 'PIN_GEREKLI' }, { status: 401 })
   }
 
   const { santiyeId } = await params

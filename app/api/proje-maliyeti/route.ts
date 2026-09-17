@@ -1,16 +1,21 @@
 export const dynamic = 'force-dynamic'
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
+import { pmTokenGecerliMi, PM_COOKIE_NAME } from '@/lib/proje-maliyeti-auth'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session?.user || (session.user as any).role !== 'ADMIN') {
     return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 })
   }
+  const userId = (session.user as any).id as string
+  if (!pmTokenGecerliMi(req.cookies.get(PM_COOKIE_NAME)?.value, userId)) {
+    return NextResponse.json({ error: 'PIN gerekli', code: 'PIN_GEREKLI' }, { status: 401 })
+  }
 
-  const [santiyeler, akaryakitGruplari] = await Promise.all([
+  const [santiyeler, akaryakitGruplari, ekMaliyetGruplari] = await Promise.all([
     prisma.santiye.findMany({
       orderBy: { ad: 'asc' },
       include: {
@@ -28,7 +33,15 @@ export async function GET() {
       where: { santiyeId: { not: null } },
       _sum: { tutar: true },
     }),
+    prisma.projeEkMaliyet.groupBy({
+      by: ['santiyeId'],
+      _sum: { tutar: true },
+    }),
   ])
+  const ekMaliyetMap = new Map<string, number>()
+  for (const g of ekMaliyetGruplari) {
+    ekMaliyetMap.set(g.santiyeId, g._sum.tutar ?? 0)
+  }
   const akaryakitEtiketliMap = new Map<string, number>()
   for (const g of akaryakitGruplari) {
     if (g.santiyeId) akaryakitEtiketliMap.set(g.santiyeId, g._sum.tutar ?? 0)
@@ -58,9 +71,10 @@ export async function GET() {
       : 0) + personelHarcamaToplam
     const akaryakitEtiketliToplam = akaryakitEtiketliMap.get(s.id) ?? 0
     const akaryakitToplam = (ozet ? ozet.akaryakitTutar : 0) + akaryakitEtiketliToplam
+    const ekMaliyetToplam = ekMaliyetMap.get(s.id) ?? 0
     const gelir = ozet?.gelir ?? 0
 
-    const toplamGider = malzemeToplam + aracToplam + nakliyeToplam + personelToplam + akaryakitToplam
+    const toplamGider = malzemeToplam + aracToplam + nakliyeToplam + personelToplam + akaryakitToplam + ekMaliyetToplam
     const netKarZarar = gelir - toplamGider
 
     return {
@@ -68,11 +82,13 @@ export async function GET() {
       ad: s.ad,
       konum: s.konum,
       aktif: s.aktif,
+      kategori: s.kategori,
       malzemeToplam,
       aracToplam,
       nakliyeToplam,
       personelToplam,
       akaryakitToplam,
+      ekMaliyetToplam,
       toplamGider,
       gelir,
       netKarZarar,

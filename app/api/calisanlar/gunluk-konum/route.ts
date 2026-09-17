@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
       calisanId: k.calisanId,
       calisanAdi: k.calisan.ad,
       santiyeId: k.santiyeId,
-      santiyeAdi: k.santiye.ad,
+      santiyeAdi: k.santiye?.ad ?? 'Özel',
     })),
   )
 }
@@ -52,18 +52,22 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { calisanId, tarih, santiyeId, aciklama } = body
+  const { calisanId, tarih, aciklama } = body
+  // santiyeId boş/null gönderilirse bu "Özel" bir kayıttır (şantiye dışı — ör.
+  // ofiste, araç yıkama). Personel + tarih hâlâ zorunlu, şantiye değil.
+  const santiyeId: string | null = body.santiyeId || null
 
   if (!calisanId) return NextResponse.json({ error: 'Personel seçimi zorunludur' }, { status: 400 })
   if (!tarih) return NextResponse.json({ error: 'Tarih zorunludur' }, { status: 400 })
-  if (!santiyeId) return NextResponse.json({ error: 'Şantiye seçimi zorunludur' }, { status: 400 })
 
-  const [calisan, santiye] = await Promise.all([
-    prisma.calisan.findUnique({ where: { id: calisanId } }),
-    prisma.santiye.findUnique({ where: { id: santiyeId } }),
-  ])
+  const calisan = await prisma.calisan.findUnique({ where: { id: calisanId } })
   if (!calisan) return NextResponse.json({ error: 'Personel bulunamadı' }, { status: 404 })
-  if (!santiye) return NextResponse.json({ error: 'Şantiye bulunamadı' }, { status: 404 })
+
+  let santiye: { id: string; ad: string } | null = null
+  if (santiyeId) {
+    santiye = await prisma.santiye.findUnique({ where: { id: santiyeId }, select: { id: true, ad: true } })
+    if (!santiye) return NextResponse.json({ error: 'Şantiye bulunamadı' }, { status: 404 })
+  }
 
   const kayit = await prisma.calisanGunlukKonum.create({
     data: {
@@ -82,7 +86,7 @@ export async function POST(req: NextRequest) {
       calisanId: kayit.calisanId,
       calisanAdi: calisan.ad,
       santiyeId: kayit.santiyeId,
-      santiyeAdi: santiye.ad,
+      santiyeAdi: santiye?.ad ?? 'Özel',
     },
     { status: 201 },
   )
