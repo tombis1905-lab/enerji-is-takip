@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { FadeIn, Stagger, StaggerItem } from '@/components/ui/animate'
-import { Building2, Plus, MapPin, Pencil, Trash2, ClipboardList } from 'lucide-react'
+import { Building2, Plus, MapPin, Pencil, Trash2, ClipboardList, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface Santiye {
@@ -86,6 +86,21 @@ export function SantiyelerClient({ role }: { role: string }) {
     } catch { toast.error('Hata oluştu') }
   }
 
+  const handleDurumDegistir = async (s: Santiye) => {
+    const yeniAktif = !s.aktif
+    if (!confirm(yeniAktif ? `${s.ad} yeniden aktif/devam ediyor olarak işaretlensin mi?` : `${s.ad} tamamlandı olarak işaretlensin mi?`)) return
+    try {
+      const res = await fetch(`/api/santiyeler/${s.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aktif: yeniAktif }),
+      })
+      if (!res.ok) { toast.error('Güncellenemedi'); return }
+      toast.success(yeniAktif ? 'Şantiye devam ediyor olarak işaretlendi' : 'Şantiye tamamlandı olarak işaretlendi')
+      loadData()
+    } catch { toast.error('Hata oluştu') }
+  }
+
   return (
     <div className="space-y-6">
       <FadeIn>
@@ -117,7 +132,7 @@ export function SantiyelerClient({ role }: { role: string }) {
         <Stagger className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" staggerDelay={0.05}>
           {(santiyeler ?? []).map((s: Santiye) => (
             <StaggerItem key={s.id}>
-              <Card className="group hover:shadow-md transition-shadow">
+              <Card className={`group hover:shadow-md transition-shadow ${!s.aktif ? 'opacity-70' : ''}`}>
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-3">
@@ -125,7 +140,18 @@ export function SantiyelerClient({ role }: { role: string }) {
                         <Building2 className="h-5 w-5" />
                       </div>
                       <div>
-                        <h3 className="font-semibold">{s.ad}</h3>
+                        <h3 className="font-semibold flex items-center gap-1.5 flex-wrap">
+                          {s.ad}
+                          <span
+                            className={
+                              s.aktif
+                                ? 'text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-1.5 py-0.5'
+                                : 'inline-flex items-center gap-0.5 text-[10px] font-semibold text-gray-600 bg-gray-100 border border-gray-300 rounded-full px-1.5 py-0.5'
+                            }
+                          >
+                            {s.aktif ? 'Devam Ediyor' : (<><CheckCircle2 className="h-2.5 w-2.5" /> Tamamlandı</>)}
+                          </span>
+                        </h3>
                         {s.konum && (
                           <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
                             <MapPin className="h-3 w-3" /> {s.konum}
@@ -138,6 +164,9 @@ export function SantiyelerClient({ role }: { role: string }) {
                     </div>
                     {isAdmin && (
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="icon-sm" onClick={() => handleDurumDegistir(s)} title={s.aktif ? 'Tamamlandı olarak işaretle' : 'Devam ediyor olarak işaretle'}>
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        </Button>
                         <Button variant="ghost" size="icon-sm" onClick={() => openEdit(s)}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>

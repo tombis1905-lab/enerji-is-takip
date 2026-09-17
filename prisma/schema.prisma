@@ -49,6 +49,11 @@ model IsTuru {
   ad               String        @unique
   birim            String
   aktif            Boolean       @default(true)
+  // İşaretlenirse: bu iş türüne girilen İş Kaydı bir aracın/iş makinesinin
+  // (ör. kepçe) yakıt harcamasıdır — miktar alanı TL tutarı olarak girilir ve
+  // seçilen araç zorunlu olur; kayıt otomatik olarak Akaryakıt listesine
+  // (ve dolayısıyla o şantiyenin Proje Maliyeti akaryakıt toplamına) yansır.
+  akaryakitTakibi  Boolean       @default(false)
   createdAt        DateTime      @default(now())
   isKayitlari      IsKaydi[]
   projeMalzemeleri ProjeMalzeme[]
@@ -62,17 +67,24 @@ model IsKaydi {
   userId      String
   santiyeId   String
   isTuruId    String
+  // Opsiyonel: bu iş bir araç/iş makinesi (ör. kepçe) tarafından yapıldıysa.
+  // isTuru.akaryakitTakibi=true ise ZORUNLU olur — miktar (TL) otomatik
+  // olarak bu aracın Akaryakıt kaydına işlenir (bkz. lib/proje-akaryakit-sync.ts).
+  aracId      String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   user        User          @relation(fields: [userId], references: [id])
   santiye     Santiye       @relation(fields: [santiyeId], references: [id])
   isTuru      IsTuru        @relation(fields: [isTuruId], references: [id])
+  arac        Arac?         @relation(fields: [aracId], references: [id])
   fotograflar IsKaydiFoto[]
+  akaryakitKaydiOtomatik AkaryakitKaydi?
 
   @@index([userId])
   @@index([santiyeId])
   @@index([tarih])
   @@index([isTuruId])
+  @@index([aracId])
 }
 
 model Arac {
@@ -88,6 +100,7 @@ model Arac {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   akaryakitKayitlari AkaryakitKaydi[]
+  isKayitlari        IsKaydi[]
 
   projeAraclar     ProjeArac[]
   projeAracGunleri ProjeAracGun[]
@@ -113,11 +126,17 @@ model AkaryakitKaydi {
   // Proje Maliyeti'ndeki akaryakıt toplamına otomatik olarak eklenir (elle
   // girilen akaryakitTutar alanının ÜSTÜNE, ayrı bir kalem olarak).
   santiyeId   String?
+  // Doldurulmuşsa bu kayıt elle değil, bir İş Kaydı'ndan (akaryakitTakibi=true
+  // olan bir iş türü + araç seçilerek) OTOMATİK oluşturulmuştur — o İş Kaydı
+  // silinirse/değişirse bu kayıt da otomatik silinir/güncellenir, elle
+  // düzenlenmemesi/silinmemesi gerekir (bkz. lib/proje-akaryakit-sync.ts).
+  kaynakIsKaydiId String? @unique
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   arac        Arac      @relation(fields: [aracId], references: [id])
   user        User      @relation(fields: [userId], references: [id])
   santiye     Santiye?  @relation(fields: [santiyeId], references: [id])
+  kaynakIsKaydi IsKaydi? @relation(fields: [kaynakIsKaydiId], references: [id], onDelete: Cascade)
 
   @@index([aracId])
   @@index([tarih])
@@ -231,6 +250,9 @@ model Calisan {
   // Personelin varsayılan/sürekli çalıştığı bölge — "ilk kayıt": Tom bunu
   // değiştirmediği sürece personelin her gün burada çalıştığı varsayılır.
   bolge         String?
+  // bolge alanı en son NE ZAMAN bu değere ayarlandı (ilk atamada ya da bolge
+  // değiştirildiğinde güncellenir) — "kaç gündür bu bölgede" hesaplamak için.
+  bolgeBaslangicTarihi DateTime?
   aciklama      String?
   aktif         Boolean          @default(true)
   createdAt     DateTime         @default(now())
@@ -244,13 +266,15 @@ model Calisan {
 // eklenir (ör. "Ferhat Kılıç normalde Botaş'ta ama 12.09'da X şantiyesine gitti").
 // Tom bir değişiklik girmediği sürece personel varsayılan bölgesinde çalışıyor
 // sayılır; bu tablo yalnızca istisnaları/o günlük değişiklikleri tutar.
+// santiyeId boş (null) ise bu "Özel" bir kayıttır — o gün hiçbir şantiyede
+// değil (ör. ofiste, araç yıkama, izin) demektir; açıklama alanında detay tutulur.
 model CalisanGunlukKonum {
   id        String   @id @default(cuid())
   calisanId String
   calisan   Calisan  @relation(fields: [calisanId], references: [id], onDelete: Cascade)
   tarih     DateTime
-  santiyeId String
-  santiye   Santiye  @relation(fields: [santiyeId], references: [id])
+  santiyeId String?
+  santiye   Santiye? @relation(fields: [santiyeId], references: [id])
   aciklama  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -5,6 +5,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/db"
 import { deleteFile } from "@/lib/s3"
 import { syncProjeMalzemeIsKaydi } from "@/lib/proje-malzeme-sync"
+import { syncAkaryakitIsKaydi } from "@/lib/proje-akaryakit-sync"
 
 export async function DELETE(
   _request: Request,
@@ -61,9 +62,17 @@ export async function PUT(
 
     const { id } = await params
     const body = await request.json()
-    const { tarih, miktar, aciklama, santiyeId, isTuruId } = body ?? {}
+    const { tarih, miktar, aciklama, santiyeId, isTuruId, aracId } = body ?? {}
 
     const oncesi = await prisma.isKaydi.findUnique({ where: { id }, select: { santiyeId: true, isTuruId: true } })
+
+    if (isTuruId) {
+      const yeniTur = await prisma.isTuru.findUnique({ where: { id: String(isTuruId) } })
+      const yeniAracId = aracId !== undefined ? aracId : (await prisma.isKaydi.findUnique({ where: { id }, select: { aracId: true } }))?.aracId
+      if (yeniTur?.akaryakitTakibi && !yeniAracId) {
+        return NextResponse.json({ error: "Bu iş türü için araç/makine seçimi zorunludur" }, { status: 400 })
+      }
+    }
 
     const kayit = await prisma.isKaydi.update({
       where: { id },
@@ -73,6 +82,7 @@ export async function PUT(
         ...(aciklama !== undefined && { aciklama: aciklama ? String(aciklama) : null }),
         ...(santiyeId && { santiyeId: String(santiyeId) }),
         ...(isTuruId && { isTuruId: String(isTuruId) }),
+        ...(aracId !== undefined && { aracId: aracId ? String(aracId) : null }),
       },
       include: {
         user: { select: { name: true } },
@@ -87,6 +97,11 @@ export async function PUT(
       await syncProjeMalzemeIsKaydi(kayit.santiyeId, kayit.isTuruId)
     } catch (e) {
       console.error("Proje Maliyeti malzeme senkronizasyon hatası:", e)
+    }
+    try {
+      await syncAkaryakitIsKaydi(kayit.id)
+    } catch (e) {
+      console.error("Akaryakıt senkronizasyon hatası:", e)
     }
 
     return NextResponse.json(kayit)

@@ -11,18 +11,21 @@ import { FadeIn } from '@/components/ui/animate'
 import { toast } from 'sonner'
 import { ClipboardList, Upload, X, ImageIcon } from 'lucide-react'
 
-interface IsTuru { id: string; ad: string; birim: string }
+interface IsTuru { id: string; ad: string; birim: string; akaryakitTakibi?: boolean }
 interface Santiye { id: string; ad: string; konum: string | null }
+interface Arac { id: string; plaka: string; isim: string | null }
 
 export function KayitForm() {
   const router = useRouter()
   const [santiyeler, setSantiyeler] = useState<Santiye[]>([])
   const [isTurleri, setIsTurleri] = useState<IsTuru[]>([])
+  const [araclar, setAraclar] = useState<Arac[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
   const [santiyeId, setSantiyeId] = useState('')
   const [isTuruId, setIsTuruId] = useState('')
+  const [aracId, setAracId] = useState('')
   const [miktar, setMiktar] = useState('')
   const [tarih, setTarih] = useState('')
 
@@ -39,10 +42,12 @@ export function KayitForm() {
     Promise.all([
       fetch('/api/santiyeler').then(r => r.json()),
       fetch('/api/is-turleri').then(r => r.json()),
+      fetch('/api/araclar').then(r => r.json()),
     ])
-      .then(([s, t]) => {
+      .then(([s, t, a]) => {
         setSantiyeler(Array.isArray(s) ? s : [])
         setIsTurleri(Array.isArray(t) ? t : [])
+        setAraclar(Array.isArray(a) ? a : [])
       })
       .catch(() => toast.error('Veriler yüklenemedi'))
       .finally(() => setLoading(false))
@@ -96,6 +101,10 @@ export function KayitForm() {
       toast.error('Geçerli bir miktar girin')
       return
     }
+    if (selectedTur?.akaryakitTakibi && !aracId) {
+      toast.error('Bu iş türü için araç/makine seçimi zorunludur')
+      return
+    }
 
     setSaving(true)
     setUploadProgress(true)
@@ -117,6 +126,7 @@ export function KayitForm() {
         body: JSON.stringify({
           santiyeId,
           isTuruId,
+          aracId: aracId || null,
           miktar: Number(miktar),
           tarih: new Date(tarih).toISOString(),
           aciklama: aciklama.trim() || null,
@@ -186,16 +196,34 @@ export function KayitForm() {
                 </select>
               </div>
 
+              {/* Araç/Makine — sadece akaryakıt takipli iş türlerinde */}
+              {selectedTur?.akaryakitTakibi && (
+                <div className="space-y-2">
+                  <Label>Araç / İş Makinesi *</Label>
+                  <select
+                    value={aracId}
+                    onChange={(e) => setAracId(e.target.value)}
+                    className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="">Araç seçin</option>
+                    {(araclar ?? []).map((a: Arac) => (
+                      <option key={a.id} value={a.id}>{a.plaka}{a.isim ? ` — ${a.isim}` : ''}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">Bu tutar otomatik olarak Akaryakıt listesine ve şantiyenin Proje Maliyeti'ne yansır.</p>
+                </div>
+              )}
+
               {/* Miktar */}
               <div className="space-y-2">
-                <Label>Miktar * {selectedTur ? `(${selectedTur.birim})` : ''}</Label>
+                <Label>{selectedTur?.akaryakitTakibi ? 'Tutar * (TL)' : `Miktar * ${selectedTur ? `(${selectedTur.birim})` : ''}`}</Label>
                 <Input
                   type="number"
                   step="0.01"
                   min="0"
                   value={miktar}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMiktar(e.target.value)}
-                  placeholder={selectedTur ? `Miktar (${selectedTur.birim})` : 'Miktar girin'}
+                  placeholder={selectedTur?.akaryakitTakibi ? 'Tutar (TL)' : selectedTur ? `Miktar (${selectedTur.birim})` : 'Miktar girin'}
                 />
               </div>
 

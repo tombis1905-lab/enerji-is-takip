@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { FadeIn, Stagger, StaggerItem } from '@/components/ui/animate'
-import { Wrench, Plus, Trash2, Ruler } from 'lucide-react'
+import { Wrench, Plus, Trash2, Ruler, Pencil, Fuel } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface IsTuru {
@@ -15,13 +15,15 @@ interface IsTuru {
   ad: string
   birim: string
   aktif: boolean
+  akaryakitTakibi: boolean
 }
 
 export function IsTurleriClient() {
   const [turleri, setTurleri] = useState<IsTuru[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [form, setForm] = useState({ ad: '', birim: '' })
+  const [editId, setEditId] = useState<string | null>(null)
+  const [form, setForm] = useState({ ad: '', birim: '', akaryakitTakibi: false })
   const [saving, setSaving] = useState(false)
 
   const loadData = useCallback(() => {
@@ -35,7 +37,14 @@ export function IsTurleriClient() {
   useEffect(() => { loadData() }, [loadData])
 
   const openNew = () => {
-    setForm({ ad: '', birim: '' })
+    setEditId(null)
+    setForm({ ad: '', birim: '', akaryakitTakibi: false })
+    setDialogOpen(true)
+  }
+
+  const openEdit = (t: IsTuru) => {
+    setEditId(t.id)
+    setForm({ ad: t.ad, birim: t.birim, akaryakitTakibi: t.akaryakitTakibi })
     setDialogOpen(true)
   }
 
@@ -46,17 +55,19 @@ export function IsTurleriClient() {
     }
     setSaving(true)
     try {
-      const res = await fetch('/api/is-turleri', {
-        method: 'POST',
+      const url = editId ? `/api/is-turleri/${editId}` : '/api/is-turleri'
+      const method = editId ? 'PUT' : 'POST'
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ad: form.ad.trim(), birim: form.birim.trim() }),
+        body: JSON.stringify({ ad: form.ad.trim(), birim: form.birim.trim(), akaryakitTakibi: form.akaryakitTakibi }),
       })
       if (!res.ok) {
         const data = await res.json()
         toast.error(data?.error ?? 'Hata oluştu')
         return
       }
-      toast.success('İş türü eklendi')
+      toast.success(editId ? 'İş türü güncellendi' : 'İş türü eklendi')
       setDialogOpen(false)
       loadData()
     } catch { toast.error('Hata oluştu') }
@@ -113,20 +124,32 @@ export function IsTurleriClient() {
                       <Wrench className="h-4 w-4" />
                     </div>
                     <div>
-                      <p className="font-medium">{t.ad}</p>
+                      <p className="font-medium flex items-center gap-1.5">
+                        {t.ad}
+                        {t.akaryakitTakibi && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">
+                            <Fuel className="h-2.5 w-2.5" /> Akaryakıt
+                          </span>
+                        )}
+                      </p>
                       <p className="text-sm text-muted-foreground flex items-center gap-1">
                         <Ruler className="h-3 w-3" /> {t.birim}
                       </p>
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => handleDelete(t.id)}
-                    className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button variant="ghost" size="icon-sm" onClick={() => openEdit(t)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => handleDelete(t.id)}
+                      className="text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </StaggerItem>
@@ -137,7 +160,7 @@ export function IsTurleriClient() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Yeni İş Türü Ekle</DialogTitle>
+            <DialogTitle>{editId ? 'İş Türünü Düzenle' : 'Yeni İş Türü Ekle'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -153,14 +176,28 @@ export function IsTurleriClient() {
               <Input
                 value={form.birim}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, birim: e.target.value }))}
-                placeholder="Ör: adet, metre, m³"
+                placeholder="Ör: adet, metre, m³ — akaryakıt takibi için: TL"
               />
             </div>
+            <label className="flex items-start gap-2 rounded-lg border p-3 cursor-pointer hover:bg-muted/40 transition-colors">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={form.akaryakitTakibi}
+                onChange={(e) => setForm(p => ({ ...p, akaryakitTakibi: e.target.checked }))}
+              />
+              <span className="text-sm">
+                <span className="font-medium flex items-center gap-1"><Fuel className="h-3.5 w-3.5 text-amber-600" /> Bu bir araç/iş makinesi yakıt gideri</span>
+                <span className="text-muted-foreground block mt-0.5">
+                  İşaretlenirse İş Kaydı eklerken araç seçimi zorunlu olur ve girilen tutar (TL) otomatik olarak Akaryakıt listesine ve o şantiyenin Proje Maliyeti'ne yansır.
+                </span>
+              </span>
+            </label>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Vazgeç</Button>
             <Button onClick={handleSave} loading={saving} className="bg-secondary text-secondary-foreground hover:bg-secondary/90">
-              Ekle
+              {editId ? 'Güncelle' : 'Ekle'}
             </Button>
           </DialogFooter>
         </DialogContent>

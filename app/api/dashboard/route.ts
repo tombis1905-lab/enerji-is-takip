@@ -55,6 +55,41 @@ export async function GET() {
     const santiyeler = await prisma.santiye.findMany()
     const santiyeMap = Object.fromEntries((santiyeler ?? []).map((s: any) => [s.id, s]))
 
+    // Şantiye Durumu (Gösterge Paneli üst kısmı): her şantiye için son kayıt
+    // tarihi + toplam kayıt sayısı — "ne oluyor ne bitiyor" görünümü.
+    // aktif=false ise Tom onu Şantiyeler sayfasında elle "Tamamlandı" işaretlemiştir.
+    // aktif=true ama uzun süredir (14 gün+) kayıt yoksa "durgun" olarak işaretlenir.
+    const DURGUN_GUN_ESIGI = 14
+    const sonKayitGrouped = await prisma.isKaydi.groupBy({
+      by: ["santiyeId"],
+      where,
+      _max: { tarih: true },
+    })
+    const sonKayitMap = Object.fromEntries((sonKayitGrouped ?? []).map((g: any) => [g.santiyeId, g._max.tarih]))
+    const toplamKayitMap = Object.fromEntries((santiyeGrouped ?? []).map((g: any) => [g.santiyeId, g._count ?? 0]))
+
+    const santiyeDurumlari = (santiyeler ?? [])
+      .map((s: any) => {
+        const sonKayitTarihi: string | null = sonKayitMap[s.id] ? new Date(sonKayitMap[s.id]).toISOString() : null
+        const gunFarki = sonKayitTarihi ? Math.floor((now.getTime() - new Date(sonKayitTarihi).getTime()) / 86400000) : null
+        const durgun = s.aktif && gunFarki !== null && gunFarki >= DURGUN_GUN_ESIGI
+        return {
+          id: s.id,
+          ad: s.ad,
+          aktif: s.aktif,
+          sonKayitTarihi,
+          gunFarki,
+          durgun,
+          toplamKayit: toplamKayitMap[s.id] ?? 0,
+        }
+      })
+      // Devam edenler önce (durgunlar da aralarında ama en üstte değil), tamamlananlar en altta
+      .sort((a: any, b: any) => {
+        if (a.aktif !== b.aktif) return a.aktif ? -1 : 1
+        if (a.durgun !== b.durgun) return a.durgun ? 1 : -1
+        return (b.sonKayitTarihi ?? "").localeCompare(a.sonKayitTarihi ?? "")
+      })
+
     const santiyeOzetleri = (santiyeGrouped ?? []).map((g: any) => ({
       ad: santiyeMap[g.santiyeId]?.ad ?? "",
       kayitSayisi: g._count ?? 0,
@@ -138,6 +173,7 @@ export async function GET() {
       isTuruOzetleri,
       santiyeOzetleri,
       santiyeBazliKirilim: Object.values(santiyeBazliKirilim),
+      santiyeDurumlari,
       tumSantiyeler: santiyeler.filter((s: any) => s.aktif !== false).map((s: any) => ({ id: s.id, ad: s.ad })),
       tumIsTurleri: isTurleri.filter((t: any) => t.aktif !== false).map((t: any) => ({ id: t.id, ad: t.ad, birim: t.birim })),
       sonKayitlar,

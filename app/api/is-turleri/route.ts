@@ -28,11 +28,11 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { ad, birim } = body ?? {}
+    const { ad, birim, akaryakitTakibi } = body ?? {}
     if (!ad || !birim) return NextResponse.json({ error: "İş türü adı ve birim gerekli" }, { status: 400 })
 
     const isTuru = await prisma.isTuru.create({
-      data: { ad: String(ad), birim: String(birim) },
+      data: { ad: String(ad), birim: String(birim), akaryakitTakibi: Boolean(akaryakitTakibi) },
     })
     return NextResponse.json(isTuru, { status: 201 })
   } catch (error: any) {

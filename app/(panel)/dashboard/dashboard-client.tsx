@@ -5,14 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { ClipboardList, Calendar, CalendarDays, CalendarRange, TrendingUp, Building2, Layers, MapPin, X, ChevronDown, ChevronUp, Filter, DollarSign, Download } from 'lucide-react'
+import { ClipboardList, Calendar, CalendarDays, CalendarRange, Building2, MapPin, X, ChevronDown, ChevronUp, Filter, DollarSign, Download, CheckCircle2, AlertTriangle, Activity } from 'lucide-react'
 import { FadeIn } from '@/components/ui/animate'
-import dynamic from 'next/dynamic'
 import * as XLSX from 'xlsx'
-
-const BarChartComponent = dynamic(() => import('./charts').then(m => m.IsTuruBarChart), { ssr: false, loading: () => <Skeleton className="w-full h-[300px]" /> })
-const PieChartComponent = dynamic(() => import('./charts').then(m => m.SantiyePieChart), { ssr: false, loading: () => <Skeleton className="w-full h-[300px]" /> })
-const LineChartComponent = dynamic(() => import('./charts').then(m => m.ZamanLineChart), { ssr: false, loading: () => <Skeleton className="w-full h-[300px]" /> })
 
 interface SantiyeKirilimTur {
   ad: string
@@ -28,6 +23,16 @@ interface SantiyeKirilim {
   isTurleri: SantiyeKirilimTur[]
 }
 
+interface SantiyeDurumu {
+  id: string
+  ad: string
+  aktif: boolean
+  sonKayitTarihi: string | null
+  gunFarki: number | null
+  durgun: boolean
+  toplamKayit: number
+}
+
 interface DashboardData {
   toplamKayit: number
   gunlukKayit: number
@@ -36,6 +41,7 @@ interface DashboardData {
   isTuruOzetleri: { ad: string; birim: string; toplam: number; kayitSayisi: number }[]
   santiyeOzetleri: { ad: string; kayitSayisi: number; toplamMiktar: number }[]
   santiyeBazliKirilim: SantiyeKirilim[]
+  santiyeDurumlari: SantiyeDurumu[]
   tumSantiyeler: { id: string; ad: string }[]
   tumIsTurleri: { id: string; ad: string; birim: string }[]
   sonKayitlar: any[]
@@ -192,13 +198,13 @@ export function DashboardClient({ role }: { role: string }) {
   }
 
   const stats = [
-    { label: 'Toplam Kayıt', value: data?.toplamKayit ?? 0, icon: ClipboardList, color: 'text-blue-600 bg-blue-50' },
-    { label: 'Bugün', value: data?.gunlukKayit ?? 0, icon: Calendar, color: 'text-orange-500 bg-orange-50' },
-    { label: 'Bu Hafta', value: data?.haftalikKayit ?? 0, icon: CalendarDays, color: 'text-green-600 bg-green-50' },
-    { label: 'Bu Ay', value: data?.aylikKayit ?? 0, icon: CalendarRange, color: 'text-purple-600 bg-purple-50' },
+    { label: 'Toplam Kayıt', value: data?.toplamKayit ?? 0, icon: ClipboardList },
+    { label: 'Bugün', value: data?.gunlukKayit ?? 0, icon: Calendar },
+    { label: 'Bu Hafta', value: data?.haftalikKayit ?? 0, icon: CalendarDays },
+    { label: 'Bu Ay', value: data?.aylikKayit ?? 0, icon: CalendarRange },
   ]
 
-  const sortedOzetler = [...(data?.isTuruOzetleri ?? [])].sort((a, b) => b.toplam - a.toplam)
+  const santiyeDurumlari = data?.santiyeDurumlari ?? []
 
   // Şantiye ve iş türü listeleri (filtreler için)
   const santiyeListesi = data?.tumSantiyeler ?? []
@@ -217,66 +223,73 @@ export function DashboardClient({ role }: { role: string }) {
         </div>
       </FadeIn>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {stats.map((stat, i) => {
-          const Icon = stat.icon
-          return (
-            <FadeIn key={stat.label} delay={i * 0.05}>
-              <Card>
-                <CardContent className="p-4 sm:p-5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs sm:text-sm text-muted-foreground">{stat.label}</p>
-                      <p className="text-2xl sm:text-3xl font-bold font-mono mt-1">{stat.value}</p>
-                    </div>
-                    <div className={`p-2 sm:p-3 rounded-lg ${stat.color}`}>
-                      <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </FadeIn>
-          )
-        })}
-      </div>
+      {/* Sade özet şeridi */}
+      <FadeIn>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border bg-muted/30 px-4 py-3">
+          {stats.map((stat) => {
+            const Icon = stat.icon
+            return (
+              <div key={stat.label} className="flex items-center gap-2">
+                <Icon className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">{stat.label}:</span>
+                <span className="font-mono font-bold">{stat.value}</span>
+              </div>
+            )
+          })}
+        </div>
+      </FadeIn>
 
-      {/* İş Türü Özet Kartları */}
-      {sortedOzetler.length > 0 && (
-        <FadeIn delay={0.1}>
-          <div>
-            <h2 className="font-display text-lg font-semibold tracking-tight mb-3 flex items-center gap-2">
-              <Layers className="h-5 w-5 text-secondary" />
-              İş Türü Özetleri
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {sortedOzetler.map((ozet) => {
-                const renkSinifi = BIRIM_RENK[ozet.birim] ?? 'text-gray-600 bg-gray-50 border-gray-200'
+      {/* Şantiye Durumu — ne oluyor, ne bitiyor */}
+      <FadeIn delay={0.05}>
+        <div>
+          <h2 className="font-display text-lg font-semibold tracking-tight mb-3 flex items-center gap-2">
+            <Activity className="h-5 w-5 text-secondary" />
+            Şantiye Durumu
+          </h2>
+          {santiyeDurumlari.length === 0 ? (
+            <Card>
+              <CardContent className="py-8 text-center text-sm text-muted-foreground">Henüz şantiye yok.</CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {santiyeDurumlari.map((s) => {
+                const durum = !s.aktif
+                  ? { label: 'Tamamlandı', icon: CheckCircle2, cls: 'text-gray-600 bg-gray-100 border-gray-300' }
+                  : s.durgun
+                    ? { label: `Durgun · ${s.gunFarki} gündür kayıt yok`, icon: AlertTriangle, cls: 'text-amber-700 bg-amber-50 border-amber-200' }
+                    : { label: 'Devam Ediyor', icon: Activity, cls: 'text-green-700 bg-green-50 border-green-200' }
+                const DurumIcon = durum.icon
                 return (
-                  <Card key={ozet.ad} className={`border ${renkSinifi.split(' ')[2] ?? 'border-border'}`}>
-                    <CardContent className="p-3 sm:p-4">
-                      <p className="text-xs sm:text-sm font-medium text-muted-foreground truncate" title={ozet.ad}>{ozet.ad}</p>
-                      <div className="mt-2 flex items-baseline gap-1.5">
-                        <span className="text-xl sm:text-2xl font-bold font-mono">{Number(ozet.toplam).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}</span>
-                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${renkSinifi.split(' ').slice(0, 2).join(' ')}`}>{ozet.birim}</span>
+                  <Card key={s.id} className={!s.aktif ? 'opacity-70' : ''}>
+                    <CardContent className="p-4 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-semibold truncate flex items-center gap-1.5">
+                          <Building2 className="h-4 w-4 text-secondary shrink-0" /> {s.ad}
+                        </p>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">{ozet.kayitSayisi} kayıt</p>
+                      <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${durum.cls}`}>
+                        <DurumIcon className="h-3 w-3" /> {durum.label}
+                      </span>
+                      <div className="text-xs text-muted-foreground flex items-center justify-between pt-1">
+                        <span>{s.toplamKayit} toplam kayıt</span>
+                        <span>{s.sonKayitTarihi ? `Son: ${new Date(s.sonKayitTarihi).toLocaleDateString('tr-TR')}` : 'Kayıt yok'}</span>
+                      </div>
                     </CardContent>
                   </Card>
                 )
               })}
             </div>
-          </div>
-        </FadeIn>
-      )}
+          )}
+        </div>
+      </FadeIn>
 
       {/* Şantiye Bazlı Kırılım */}
       {(data?.santiyeBazliKirilim?.length ?? 0) > 0 && (
         <FadeIn delay={0.12}>
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-display text-lg font-semibold tracking-tight flex items-center gap-2">
-                <MapPin className="h-5 w-5 text-secondary" />
+            <div className="flex items-center justify-between mb-3 pb-2 border-b-2 border-secondary/30">
+              <h2 className="font-display text-xl font-bold tracking-tight flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-secondary/10 text-secondary"><MapPin className="h-5 w-5" /></span>
                 Şantiye Bazlı İş Dağılımı
               </h2>
               <Button variant="outline" size="sm" onClick={handleDashboardExcel}>
@@ -415,57 +428,6 @@ export function DashboardClient({ role }: { role: string }) {
           </div>
         </FadeIn>
       )}
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <FadeIn delay={0.15}>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-medium flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-secondary" />
-                İş Türü Bazında Toplamlar
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[300px]">
-                <BarChartComponent data={data?.isTuruOzetleri ?? []} />
-              </div>
-            </CardContent>
-          </Card>
-        </FadeIn>
-
-        <FadeIn delay={0.2}>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-medium flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-secondary" />
-                Şantiye Dağılımı
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[300px]">
-                <PieChartComponent data={data?.santiyeOzetleri ?? []} />
-              </div>
-            </CardContent>
-          </Card>
-        </FadeIn>
-      </div>
-
-      {/* Time series */}
-      <FadeIn delay={0.25}>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-medium">
-              Son 30 Gün – Günlük Kayıt Sayısı
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px]">
-              <LineChartComponent data={data?.zamanSerisi ?? []} />
-            </div>
-          </CardContent>
-        </Card>
-      </FadeIn>
 
       {/* Kayıtlar + Filtre */}
       <FadeIn delay={0.3}>

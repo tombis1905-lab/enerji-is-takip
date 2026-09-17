@@ -5,6 +5,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/db"
 import { getFileUrl } from "@/lib/s3"
 import { syncProjeMalzemeIsKaydi } from "@/lib/proje-malzeme-sync"
+import { syncAkaryakitIsKaydi } from "@/lib/proje-akaryakit-sync"
 
 export async function GET(request: Request) {
   try {
@@ -71,10 +72,16 @@ export async function POST(request: Request) {
 
     const userId = (session.user as any).id
     const body = await request.json()
-    const { tarih, miktar, aciklama, santiyeId, isTuruId, fotograflar } = body ?? {}
+    const { tarih, miktar, aciklama, santiyeId, isTuruId, aracId, fotograflar } = body ?? {}
 
     if (!tarih || miktar === undefined || !santiyeId || !isTuruId) {
       return NextResponse.json({ error: "Gerekli alanlar eksik" }, { status: 400 })
+    }
+
+    // akaryakıt takipli bir iş türüyse araç seçimi zorunlu
+    const isTuru = await prisma.isTuru.findUnique({ where: { id: String(isTuruId) } })
+    if (isTuru?.akaryakitTakibi && !aracId) {
+      return NextResponse.json({ error: "Bu iş türü için araç/makine seçimi zorunludur" }, { status: 400 })
     }
 
     const kayit = await prisma.isKaydi.create({
@@ -85,6 +92,7 @@ export async function POST(request: Request) {
         userId,
         santiyeId: String(santiyeId),
         isTuruId: String(isTuruId),
+        aracId: aracId ? String(aracId) : null,
         fotograflar: {
           create: (fotograflar ?? []).map((f: any) => ({
             cloudStoragePath: String(f.cloud_storage_path),
@@ -105,6 +113,11 @@ export async function POST(request: Request) {
       await syncProjeMalzemeIsKaydi(kayit.santiyeId, kayit.isTuruId)
     } catch (e) {
       console.error("Proje Maliyeti malzeme senkronizasyon hatası:", e)
+    }
+    try {
+      await syncAkaryakitIsKaydi(kayit.id)
+    } catch (e) {
+      console.error("Akaryakıt senkronizasyon hatası:", e)
     }
 
     return NextResponse.json(kayit, { status: 201 })
