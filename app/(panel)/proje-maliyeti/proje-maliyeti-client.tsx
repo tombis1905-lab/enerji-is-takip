@@ -44,9 +44,7 @@ import {
   Fuel,
   Wallet,
   CalendarPlus,
-  PiggyBank,
   BarChart3,
-  Receipt,
   Lock,
   Landmark,
   Trees,
@@ -266,15 +264,6 @@ function ProjeMaliyetiIcerik({ onLock }: { onLock: () => void }) {
 
   useEffect(() => { loadList() }, [loadList])
 
-  const toplam = santiyeler.reduce(
-    (acc, s) => ({
-      gelir: acc.gelir + s.gelir,
-      gider: acc.gider + s.toplamGider,
-      net: acc.net + s.netKarZarar,
-    }),
-    { gelir: 0, gider: 0, net: 0 }
-  )
-
   return (
     <div className="space-y-6">
       <FadeIn>
@@ -307,105 +296,93 @@ function ProjeMaliyetiIcerik({ onLock }: { onLock: () => void }) {
           </CardContent>
         </Card>
       ) : (
-        <>
-          {/* Genel özet / dashboard */}
-          <FadeIn>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <Card className="border-none bg-gradient-to-br from-primary/10 to-primary/5">
-                  <CardContent className="p-4">
-                    <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><Wallet className="h-3.5 w-3.5" /> Toplam Gelir</p>
-                    <p className="text-xl font-bold mt-1.5">{formatTL(toplam.gelir)}</p>
-                  </CardContent>
-                </Card>
-                <Card className="border-none bg-gradient-to-br from-destructive/10 to-destructive/5">
-                  <CardContent className="p-4">
-                    <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><Receipt className="h-3.5 w-3.5" /> Toplam Maliyet</p>
-                    <p className="text-xl font-bold mt-1.5">{formatTL(toplam.gider)}</p>
-                  </CardContent>
-                </Card>
-                <Card className={`border-none bg-gradient-to-br ${toplam.net >= 0 ? 'from-green-600/15 to-green-600/5' : 'from-destructive/15 to-destructive/5'}`}>
-                  <CardContent className="p-4">
-                    <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><PiggyBank className="h-3.5 w-3.5" /> Net Kâr / Zarar</p>
-                    <p className={`text-xl font-bold mt-1.5 flex items-center gap-1 ${toplam.net > 0 ? 'text-green-600' : toplam.net < 0 ? 'text-destructive' : ''}`}>
-                      {toplam.net > 0 ? <TrendingUp className="h-4 w-4" /> : toplam.net < 0 ? <TrendingDown className="h-4 w-4" /> : null}
-                      {formatTL(toplam.net)}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card className="border-none bg-gradient-to-br from-secondary/15 to-secondary/5">
-                  <CardContent className="p-4">
-                    <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5" /> Şantiye Sayısı</p>
-                    <p className="text-xl font-bold mt-1.5">{santiyeler.length}</p>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-          </FadeIn>
-
-        <div className="space-y-6">
+        <div className="space-y-5">
           {(['KASKI', 'CEVRE_SEHIRCILIK', 'OZEL', 'KATEGORISIZ'] as const).map((kat) => {
             const grup = santiyeler.filter((s) => (s.kategori ?? 'KATEGORISIZ') === kat)
             if (grup.length === 0) return null
             const bilgi = KATEGORI_BILGI[kat]
             const Icon = bilgi.icon
+            const katToplam = grup.reduce(
+              (acc, s) => ({ gider: acc.gider + s.toplamGider, net: acc.net + s.netKarZarar }),
+              { gider: 0, net: 0 }
+            )
             return (
-              <div key={kat} className="space-y-3">
-                <h2 className={`text-base font-bold flex items-center gap-2 px-1 ${bilgi.renk}`}>
-                  <span className={`p-1.5 rounded-lg ${bilgi.bg} border ${bilgi.border}`}><Icon className="h-4 w-4" /></span>
-                  {bilgi.etiket}
-                  <span className="text-xs font-normal text-muted-foreground">({grup.length})</span>
-                </h2>
-                <Accordion type="single" collapsible value={openId} onValueChange={setOpenId} className="space-y-3">
-                  {grup.map((s) => (
-                    <AccordionItem key={s.id} value={s.id} className={`border rounded-xl overflow-hidden bg-card border-l-4 ${bilgi.border}`}>
-                      <AccordionTrigger className="px-5 py-4 hover:no-underline hover:bg-muted/50">
-                        <div className="flex flex-1 items-center justify-between gap-4 pr-2">
-                          <div className="flex items-start gap-3 text-left">
-                            <div className={`p-2 rounded-lg ${bilgi.bg} ${bilgi.renk} mt-0.5`}>
-                              <Building2 className="h-5 w-5" />
+              <FadeIn key={kat}>
+                <div className={`rounded-2xl border ${bilgi.border} ${bilgi.bg} overflow-hidden`}>
+                  <div className="flex items-center justify-between gap-3 px-4 py-3 flex-wrap">
+                    <div className="flex items-center gap-2.5">
+                      <span className={`p-2 rounded-xl bg-card border ${bilgi.border} ${bilgi.renk}`}><Icon className="h-4 w-4" /></span>
+                      <div>
+                        <h2 className={`text-sm font-bold ${bilgi.renk}`}>{bilgi.etiket}</h2>
+                        <p className="text-xs text-muted-foreground">{grup.length} şantiye</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-right">
+                      <div>
+                        <p className="text-[11px] text-muted-foreground">Toplam Gider</p>
+                        <p className="text-sm font-semibold">{formatTL(katToplam.gider)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-muted-foreground">Net Kâr/Zarar</p>
+                        <p className={`text-sm font-semibold flex items-center justify-end gap-1 ${katToplam.net > 0 ? 'text-green-600' : katToplam.net < 0 ? 'text-destructive' : ''}`}>
+                          {katToplam.net > 0 ? <TrendingUp className="h-3.5 w-3.5" /> : katToplam.net < 0 ? <TrendingDown className="h-3.5 w-3.5" /> : null}
+                          {formatTL(katToplam.net)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-background/60 p-3">
+                    <Accordion type="single" collapsible value={openId} onValueChange={setOpenId} className="space-y-2.5">
+                      {grup.map((s) => (
+                        <AccordionItem key={s.id} value={s.id} className={`border rounded-xl overflow-hidden bg-card border-l-4 ${bilgi.border}`}>
+                          <AccordionTrigger className="px-5 py-4 hover:no-underline hover:bg-muted/50">
+                            <div className="flex flex-1 items-center justify-between gap-4 pr-2">
+                              <div className="flex items-start gap-3 text-left">
+                                <div className={`p-2 rounded-lg ${bilgi.bg} ${bilgi.renk} mt-0.5`}>
+                                  <Building2 className="h-5 w-5" />
+                                </div>
+                                <div>
+                                  <h3 className="font-semibold">{s.ad}</h3>
+                                  {s.konum && (
+                                    <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
+                                      <MapPin className="h-3 w-3" /> {s.konum}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <div className="text-right hidden sm:block">
+                                  <p className="text-xs text-muted-foreground">Toplam Gider</p>
+                                  <p className="text-sm font-medium">{formatTL(s.toplamGider)}</p>
+                                </div>
+                                <Badge
+                                  variant={s.netKarZarar > 0 ? 'default' : s.netKarZarar < 0 ? 'destructive' : 'outline'}
+                                  className={s.netKarZarar > 0 ? 'bg-green-600 hover:bg-green-600' : ''}
+                                >
+                                  {s.netKarZarar > 0 ? (
+                                    <TrendingUp className="h-3 w-3 mr-1" />
+                                  ) : s.netKarZarar < 0 ? (
+                                    <TrendingDown className="h-3 w-3 mr-1" />
+                                  ) : null}
+                                  {formatTL(s.netKarZarar)}
+                                </Badge>
+                              </div>
                             </div>
-                            <div>
-                              <h3 className="font-semibold">{s.ad}</h3>
-                              {s.konum && (
-                                <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
-                                  <MapPin className="h-3 w-3" /> {s.konum}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <div className="text-right hidden sm:block">
-                              <p className="text-xs text-muted-foreground">Toplam Gider</p>
-                              <p className="text-sm font-medium">{formatTL(s.toplamGider)}</p>
-                            </div>
-                            <Badge
-                              variant={s.netKarZarar > 0 ? 'default' : s.netKarZarar < 0 ? 'destructive' : 'outline'}
-                              className={s.netKarZarar > 0 ? 'bg-green-600 hover:bg-green-600' : ''}
-                            >
-                              {s.netKarZarar > 0 ? (
-                                <TrendingUp className="h-3 w-3 mr-1" />
-                              ) : s.netKarZarar < 0 ? (
-                                <TrendingDown className="h-3 w-3 mr-1" />
-                              ) : null}
-                              {formatTL(s.netKarZarar)}
-                            </Badge>
-                          </div>
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent className="px-5 pb-5">
-                        {openId === s.id && (
-                          <SantiyeDetay santiyeId={s.id} onChange={loadList} />
-                        )}
-                      </AccordionContent>
-                    </AccordionItem>
-                  ))}
-                </Accordion>
-              </div>
+                          </AccordionTrigger>
+                          <AccordionContent className="px-5 pb-5">
+                            {openId === s.id && (
+                              <SantiyeDetay santiyeId={s.id} onChange={loadList} />
+                            )}
+                          </AccordionContent>
+                        </AccordionItem>
+                      ))}
+                    </Accordion>
+                  </div>
+                </div>
+              </FadeIn>
             )
           })}
         </div>
-        </>
       )}
     </div>
   )
