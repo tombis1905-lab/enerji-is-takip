@@ -399,7 +399,13 @@ export function FaturalarClient() {
       const buf = await dosya.arrayBuffer()
       const wb = XLSX.read(buf, { type: 'array', cellDates: true })
       const ilkSayfa = wb.SheetNames[0]
-      const satirlar = XLSX.utils.sheet_to_json(wb.Sheets[ilkSayfa], { defval: '' })
+      // Tom'un gerçek dosyası tek bir düz tablo değil, şirket+hafta bazında
+      // tekrar eden bloklar halinde — bu yüzden sütun başlığına göre değil,
+      // ham satır dizisi (A,B,C...) olarak okuyup sunucuda pozisyona göre
+      // ayıklıyoruz (haftalık ödeme tablosunun her zaman aynı 9 sütun
+      // sırasında olduğu kabulüyle: Fatura No, Tarih, Ödeme Tarihi, Yapılan
+      // İş, Firma, IBAN Bilgisi, KDV Dahil Tutar, Ödeme Yapan Firma, Yüklenici).
+      const satirlar: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[ilkSayfa], { header: 1, defval: '' })
       if (satirlar.length === 0) {
         setImportSonuc({ eklenen: 0, atlanan: 0, hatalar: ['Dosyada okunacak satır bulunamadı'] })
         return
@@ -407,7 +413,7 @@ export function FaturalarClient() {
       const res = await fetch('/api/faturalar/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ satirlar, varsayilanTur: 'ALINAN', cariEklensinMi: true }),
+        body: JSON.stringify({ satirlar, cariEklensinMi: true }),
       })
       const data = await res.json()
       if (!res.ok) {

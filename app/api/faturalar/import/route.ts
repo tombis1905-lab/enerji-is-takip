@@ -18,11 +18,11 @@ async function guard(req: NextRequest) {
   return { ok: true as const }
 }
 
-// Excel başlıkları elden ele farklı yazılabiliyor (KDV Dahil Tutar / kdv dahil
-// tutar / KDV_DAHIL_TUTAR gibi) — karşılaştırma için boşluk/alt çizgi/Türkçe
-// karakterleri sadeleştiriyoruz.
-function normalizeKey(k: string): string {
-  return String(k)
+// Karşılaştırma için boşluk/Türkçe karakter/nbsp farklarını sadeleştirir.
+function normalizeKey(k: any): string {
+  return String(k ?? '')
+    .replace(/ /g, ' ')
+    .trim()
     .toLocaleLowerCase('tr-TR')
     .replace(/ı/g, 'i')
     .replace(/ğ/g, 'g')
@@ -33,63 +33,24 @@ function normalizeKey(k: string): string {
     .replace(/[^a-z0-9]/g, '')
 }
 
-// normalize edilmiş başlık -> Fatura alanı eşlemesi. Tom'un "Haftalık
-// Ödemeler" tablosundaki gerçek sütun adlarını (FATURA NO, TARİH, ÖDEME
-// TARİHİ, YAPILAN İŞ, FİRMA, IBAN BİLGİSİ, KDV DAHİL TUTAR, ÖDEME YAPAN
-// FİRMA, YÜKLENİCİ) ve olası benzer varyasyonları kapsar. Tom'un göndereceği
-// gerçek örnek dosyaya göre bu liste genişletilebilir.
-const ALAN_ESLEME: Record<string, string> = {
-  faturano: 'faturaNo',
-  fatura: 'faturaNo',
-  tarih: 'tarih',
-  faturatarihi: 'tarih',
-  odemetarihi: 'odemeTarihi',
-  vadetarihi: 'odemeTarihi',
-  yapilanis: 'aciklama',
-  aciklama: 'aciklama',
-  is: 'aciklama',
-  firma: 'karsiTaraf',
-  karsitaraf: 'karsiTaraf',
-  kimden: 'karsiTaraf',
-  kime: 'karsiTaraf',
-  ibanbilgisi: 'ibanBilgisi',
-  iban: 'ibanBilgisi',
-  kdvdahiltutar: 'kdvDahilTutar',
-  tutarkdvdahil: 'kdvDahilTutar',
-  dahiltutar: 'kdvDahilTutar',
-  tutar: 'tutar',
-  kdvharictutar: 'tutar',
-  harictutar: 'tutar',
-  kdvorani: 'kdvOrani',
-  kdv: 'kdvOrani',
-  odemeyapanfirma: 'sirketAdi',
-  sirket: 'sirketAdi',
-  sirketi: 'sirketAdi',
-  odeyen: 'sirketAdi',
-  yuklenici: 'yuklenici',
-  santiye: 'santiyeAdi',
-  santiyesi: 'santiyeAdi',
-  tur: 'tur',
+function temizle(v: any): string {
+  return String(v ?? '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim()
 }
 
-function satiriEslestir(satir: Record<string, any>): Record<string, any> {
-  const sonuc: Record<string, any> = {}
-  for (const [k, v] of Object.entries(satir)) {
-    const norm = normalizeKey(k)
-    const alan = ALAN_ESLEME[norm]
-    if (alan && v !== undefined && v !== null && String(v).trim() !== '') {
-      sonuc[alan] = v
-    }
-  }
-  return sonuc
+// "-", boş veya sadece boşluk -> dolu sayılmaz.
+function bosMu(v: any): boolean {
+  const t = temizle(v)
+  return t === '' || t === '-'
 }
 
 function excelTarihCoz(v: any): Date | null {
   if (v === undefined || v === null || v === '') return null
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v
   if (typeof v === 'number') {
     // Excel seri tarih numarası (1900 tabanlı)
     const ms = Math.round((v - 25569) * 86400 * 1000)
-    return new Date(ms)
+    const d = new Date(ms)
+    return isNaN(d.getTime()) ? null : d
   }
   const d = new Date(v)
   return isNaN(d.getTime()) ? null : d
@@ -97,10 +58,31 @@ function excelTarihCoz(v: any): Date | null {
 
 function sayiCoz(v: any): number | null {
   if (v === undefined || v === null || v === '') return null
-  if (typeof v === 'number') return v
+  if (typeof v === 'number') return isNaN(v) ? null : v
   const temiz = String(v).replace(/\./g, '').replace(',', '.').replace(/[^0-9.-]/g, '')
+  if (temiz === '' || temiz === '-') return null
   const n = Number(temiz)
   return isNaN(n) ? null : n
+}
+
+// Tom'un gerçek "Haftalık Ödemeler / Cari" Excel dosyası, tek bir düz tablo
+// değil — her şirket+hafta için ayrı bir blok halinde tekrar eden, sabit 9
+// sütunlu (FATURA NO, TARİH, ÖDEME TARİHİ, YAPILAN İŞ, FİRMA, IBAN BİLGİSİ,
+// KDV DAHİL TUTAR, ÖDEME YAPAN FİRMA, YÜKLENİCİ) bir yapı. Aralarda hafta
+// başlığı, şirket başlığı, tekrar eden sütun başlığı, "GENEL TOPLAM" ve
+// "KALAN ÖDEME TOPLAM" satırları var. Bunların hepsini elemek yerine, gerçek
+// bir ödeme satırının her zaman geçerli bir TARİH (B sütunu) ve bir KDV DAHİL
+// TUTAR (G sütunu) taşıdığı gözlemine dayanıyoruz: ikisi de doluysa gerçek
+// satır, değilse yapısal satır (başlık/toplam/boş) kabul edilip sessizce
+// atlanır.
+function eslesenSirket(odemeYapanTemiz: string, sirketMap: Map<string, string>): string | null {
+  const norm = normalizeKey(odemeYapanTemiz)
+  if (!norm) return null
+  if (sirketMap.has(norm)) return sirketMap.get(norm)!
+  for (const [sirketNorm, id] of sirketMap.entries()) {
+    if (norm.startsWith(sirketNorm) || sirketNorm.startsWith(norm)) return id
+  }
+  return null
 }
 
 export async function POST(req: NextRequest) {
@@ -108,8 +90,7 @@ export async function POST(req: NextRequest) {
   if (!g.ok) return g.res
 
   const body = await req.json().catch(() => ({}))
-  const satirlar: any[] = Array.isArray(body?.satirlar) ? body.satirlar : []
-  const varsayilanTur: 'KESILEN' | 'ALINAN' = body?.varsayilanTur === 'KESILEN' ? 'KESILEN' : 'ALINAN'
+  const satirlar: any[][] = Array.isArray(body?.satirlar) ? body.satirlar : []
   const cariEklensinMi = !!body?.cariEklensinMi
 
   if (satirlar.length === 0) {
@@ -120,93 +101,114 @@ export async function POST(req: NextRequest) {
     prisma.sirket.findMany(),
     prisma.santiye.findMany(),
   ])
-  const sirketMap = new Map(sirketler.map((s: any) => [normalizeKey(s.ad), s.id]))
-  const santiyeMap = new Map(santiyeler.map((s: any) => [normalizeKey(s.ad), s.id]))
-  const cariCache = new Map<string, string>()
+  const sirketMap = new Map(sirketler.map((s: any) => [normalizeKey(s.ad), s.id as string]))
+  const santiyeMap = new Map(santiyeler.map((s: any) => [normalizeKey(s.ad), s.id as string]))
+  const cariCache = new Map<string, string | null>()
 
   let eklenen = 0
+  let yapisalAtlanan = 0
   const hatalar: string[] = []
 
   for (let i = 0; i < satirlar.length; i++) {
-    const ham = satirlar[i]
-    const s = satiriEslestir(ham)
-    const satirNo = i + 2 // Excel'de genelde 1. satır başlık olur
+    const satir = satirlar[i]
+    if (!Array.isArray(satir)) continue
+    const excelSatirNo = i + 1
 
-    const tarih = excelTarihCoz(s.tarih)
-    if (!tarih) {
-      hatalar.push(`Satır ${satirNo}: geçerli bir tarih bulunamadı, atlandı`)
+    const [faturaNoRaw, tarihRaw, odemeTarihiRaw, isRaw, firmaRaw, ibanRaw, tutarRaw, odemeYapanRaw, yukleniciRaw] = satir
+
+    // "GENEL TOPLAM" / "KALAN ÖDEME TOPLAM" gibi haftalık özet satırları IBAN
+    // sütununun yerinde bu etiketi taşır — bunlar gerçek bir ödeme kaydı
+    // değil, o haftanın toplamı, o yüzden sessizce atlanır (hata sayılmaz).
+    const ibanNormOnce = normalizeKey(ibanRaw)
+    if (ibanNormOnce.includes('genel toplam'.replace(/\s/g, '')) || ibanNormOnce.includes('kalanodeme')) {
       continue
     }
 
-    const kdvOrani = sayiCoz(s.kdvOrani) ?? 20
-    let tutar = sayiCoz(s.tutar)
-    let kdvDahilTutar = sayiCoz(s.kdvDahilTutar)
-    let kdvTutari: number
+    const tarih = excelTarihCoz(tarihRaw)
+    const kdvDahilTutar = sayiCoz(tutarRaw)
 
-    if (tutar === null && kdvDahilTutar !== null) {
-      tutar = kdvDahilTutar / (1 + kdvOrani / 100)
-      kdvTutari = kdvDahilTutar - tutar
-    } else if (tutar !== null && kdvDahilTutar === null) {
-      kdvTutari = tutar * (kdvOrani / 100)
-      kdvDahilTutar = tutar + kdvTutari
-    } else if (tutar !== null && kdvDahilTutar !== null) {
-      kdvTutari = kdvDahilTutar - tutar
-    } else {
-      hatalar.push(`Satır ${satirNo}: tutar bulunamadı, atlandı`)
+    // Gerçek bir ödeme/fatura satırının her zaman tarihi ve tutarı olur —
+    // ikisi de yoksa bu bir başlık/toplam/boş satırdır, sessizce atla.
+    if (!tarih && kdvDahilTutar === null) {
       continue
     }
+    if (!tarih || kdvDahilTutar === null) {
+      yapisalAtlanan++
+      hatalar.push(`Excel satırı ${excelSatirNo}: tarih veya tutardan biri eksik, atlandı`)
+      continue
+    }
+
+    const faturaNo = bosMu(faturaNoRaw) ? null : temizle(faturaNoRaw)
+    const aciklama = bosMu(isRaw) ? null : temizle(isRaw)
+    const firmaTemiz = bosMu(firmaRaw) ? null : temizle(firmaRaw)
+    const yuklenici = bosMu(yukleniciRaw) ? null : temizle(yukleniciRaw)
+    const odemeTarihi = excelTarihCoz(odemeTarihiRaw)
+
+    // IBAN sütunu bazen gerçek IBAN yerine "ÖDENDİ" durum bilgisi ya da
+    // "Kendi İbanı" notu taşıyor.
+    const ibanTemiz = temizle(ibanRaw)
+    const ibanNorm = normalizeKey(ibanTemiz)
+    let odemeDurumu: 'BEKLIYOR' | 'ODENDI' = 'BEKLIYOR'
+    let ibanBilgisi: string | null = null
+    if (ibanNorm === 'odendi') {
+      odemeDurumu = 'ODENDI'
+    } else if (!bosMu(ibanTemiz)) {
+      ibanBilgisi = ibanTemiz
+    }
+
+    // Fatura numarası olan satırlar gerçek tedarikçi faturaları (KDV'li);
+    // fatura numarası olmayanlar çoğunlukla maaş/avans gibi KDV'siz ödemeler.
+    const kdvOrani = faturaNo ? 20 : 0
+    const tutar = kdvDahilTutar / (1 + kdvOrani / 100)
+    const kdvTutari = kdvDahilTutar - tutar
+
+    const sirketId = odemeYapanRaw && !bosMu(odemeYapanRaw) ? eslesenSirket(temizle(odemeYapanRaw), sirketMap) : null
 
     let cariId: string | null = null
-    const karsiTarafAdi = s.karsiTaraf ? String(s.karsiTaraf).trim() : null
-    if (karsiTarafAdi) {
-      const norm = normalizeKey(karsiTarafAdi)
+    if (firmaTemiz) {
+      const norm = normalizeKey(firmaTemiz)
       if (cariCache.has(norm)) {
         cariId = cariCache.get(norm)!
       } else {
-        let cari = await prisma.cari.findUnique({ where: { ad: karsiTarafAdi } })
+        let cari = await prisma.cari.findUnique({ where: { ad: firmaTemiz } })
         if (!cari && cariEklensinMi) {
+          const ibanGercekMi = ibanBilgisi && /^TR/i.test(ibanBilgisi.replace(/\s/g, ''))
           cari = await prisma.cari.create({
-            data: { ad: karsiTarafAdi, ibanBilgisi: s.ibanBilgisi ? String(s.ibanBilgisi).trim() : null },
-          })
+            data: { ad: firmaTemiz, ibanBilgisi: ibanGercekMi ? ibanBilgisi : null },
+          }).catch(() => null)
         }
-        if (cari) {
-          cariId = cari.id
-          cariCache.set(norm, cari.id)
-        }
+        cariId = cari?.id ?? null
+        cariCache.set(norm, cariId)
       }
     }
-
-    const sirketId = s.sirketAdi ? sirketMap.get(normalizeKey(String(s.sirketAdi))) ?? null : null
-    const santiyeId = s.santiyeAdi ? santiyeMap.get(normalizeKey(String(s.santiyeAdi))) ?? null : null
-    const tur = s.tur && normalizeKey(String(s.tur)).includes('kes') ? 'KESILEN' : (s.tur && normalizeKey(String(s.tur)).includes('al') ? 'ALINAN' : varsayilanTur)
 
     try {
       await prisma.fatura.create({
         data: {
-          tur,
-          faturaNo: s.faturaNo ? String(s.faturaNo).trim() : null,
+          tur: 'ALINAN',
+          faturaNo,
           tarih,
-          aciklama: s.aciklama ? String(s.aciklama).trim() : null,
-          karsiTaraf: karsiTarafAdi,
+          aciklama,
+          karsiTaraf: firmaTemiz,
           tutar,
           kdvOrani,
           kdvTutari,
           kdvDahilTutar,
-          odemeDurumu: 'BEKLIYOR',
+          odemeDurumu,
           sirketId,
-          santiyeId,
-          odemeTarihi: excelTarihCoz(s.odemeTarihi),
-          ibanBilgisi: s.ibanBilgisi ? String(s.ibanBilgisi).trim() : null,
-          yuklenici: s.yuklenici ? String(s.yuklenici).trim() : null,
+          santiyeId: null,
+          odemeTarihi,
+          ibanBilgisi,
+          yuklenici,
           cariId,
           cariEklensinMi: !!cariId && cariEklensinMi,
         },
       })
       eklenen++
     } catch (e: any) {
-      hatalar.push(`Satır ${satirNo}: kaydedilemedi (${e.message ?? 'hata'})`)
+      hatalar.push(`Excel satırı ${excelSatirNo}: kaydedilemedi (${e.message ?? 'hata'})`)
     }
   }
 
-  return NextResponse.json({ eklenen, atlanan: satirlar.length - eklenen, hatalar })
+  return NextResponse.json({ eklenen, atlanan: yapisalAtlanan, hatalar })
 }
