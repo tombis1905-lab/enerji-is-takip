@@ -5,7 +5,6 @@ import { PersonelHarcamalariClient } from './personel-harcamalari-client'
 export default async function PersonelHarcamalariPage() {
   const session = await auth()
   if (!session?.user) redirect('/login')
-  if ((session.user as any).role !== 'ADMIN') redirect('/dashboard')
 
   return <PersonelHarcamalariClient />
 }

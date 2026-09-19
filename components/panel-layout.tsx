@@ -40,11 +40,11 @@ const navItems = [
   { href: '/is-turleri', label: 'İş Türleri', icon: Wrench, adminOnly: true },
   { href: '/personeller', label: 'Personeller', icon: Users, adminOnly: true },
   { href: '/araclar', label: 'Araçlar', icon: Truck, adminOnly: true },
-  { href: '/akaryakit', label: 'Akaryakıt', icon: Fuel, adminOnly: false },
+  { href: '/akaryakit', label: 'Akaryakıt', icon: Fuel, adminOnly: true },
   { href: '/depo', label: 'Depo', icon: Package, adminOnly: false },
   { href: '/ihaleler', label: 'İhaleler', icon: Gavel, adminOnly: true },
   { href: '/proje-maliyeti', label: 'Proje Maliyeti', icon: Calculator, adminOnly: true },
-  { href: '/personel-harcamalari', label: 'Personel Harcamaları', icon: Wallet, adminOnly: true },
+  { href: '/personel-harcamalari', label: 'Personel Harcamaları', icon: Wallet, adminOnly: false },
   { href: '/cekler', label: 'Çekler', icon: FileCheck2, adminOnly: true },
   { href: '/faturalar', label: 'Faturalar', icon: Receipt, adminOnly: true },
 ]

@@ -6,7 +6,7 @@ import { pinDogruMu, phTokenUret, PH_COOKIE_NAME } from '@/lib/personel-harcama-
 
 export async function POST(req: NextRequest) {
   const session = await auth()
-  if (!session?.user || (session.user as any).role !== 'ADMIN') {
+  if (!session?.user) {
     return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 })
   }
 

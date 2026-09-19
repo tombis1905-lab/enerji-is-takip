@@ -13,7 +13,7 @@ import { phTokenGecerliMi, PH_COOKIE_NAME } from '@/lib/personel-harcama-auth'
 
 async function guard(req: NextRequest) {
   const session = await auth()
-  if (!session?.user || (session.user as any).role !== 'ADMIN') {
+  if (!session?.user) {
     return { ok: false as const, res: NextResponse.json({ error: 'Yetkisiz' }, { status: 403 }) }
   }
   const userId = (session.user as any).id as string
