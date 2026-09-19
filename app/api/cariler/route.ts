@@ -63,8 +63,16 @@ export async function GET(req: NextRequest) {
   const sonuc = cariler.map((c) => {
     const f = faturaMap.get(c.id) ?? { kesilen: 0, alinan: 0 }
     const o = odemeMap.get(c.id) ?? { tahsilat: 0, odeme: 0 }
-    const alacak = Math.max(0, f.kesilen - o.tahsilat)
-    const borc = Math.max(0, f.alinan - o.odeme)
+    // Tek bir ortak bakiye üzerinden hesapla: kesilen faturalar ve yaptığımız
+    // ödemeler bizi alacaklı yapar; alınan faturalar ve tahsil ettiğimiz
+    // paralar bizi borçlu yapar. Örn: hiç faturası olmayan bir cariye 89.725
+    // TL çek verdiysek (Ödeme kaydı), bu tutarın karşılığında bir borcumuz
+    // yoksa fazladan ödemiş oluruz — bu durumda cari bize borçlanır (alacak).
+    // Eskiden kesilen/tahsilat ile alınan/ödeme ayrı ayrı 0'da kırpılıyordu,
+    // bu da böyle bir fazla ödemeyi hiçbir yerde göstermiyordu.
+    const netBakiye = (f.kesilen + o.odeme) - (f.alinan + o.tahsilat)
+    const alacak = Math.max(0, netBakiye)
+    const borc = Math.max(0, -netBakiye)
     return {
       id: c.id,
       ad: c.ad,

@@ -241,14 +241,26 @@ export function CariDurumClient() {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Card><CardContent className="p-3">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><ArrowDownCircle className="h-3.5 w-3.5" /> Toplam Alacağımız</div>
-          <div className="font-semibold">{paraStr(toplam.alacak)}</div>
-        </CardContent></Card>
-        <Card><CardContent className="p-3">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><ArrowUpCircle className="h-3.5 w-3.5" /> Toplam Borcumuz</div>
-          <div className="font-semibold">{paraStr(toplam.borc)}</div>
-        </CardContent></Card>
+        <Card
+          className={`cursor-pointer hover:shadow-md transition-shadow ${filtre === 'ALACAKLI' ? 'ring-2 ring-secondary' : ''}`}
+          onClick={() => setFiltre((f) => (f === 'ALACAKLI' ? 'HEPSI' : 'ALACAKLI'))}
+          title="Sadece alacaklı olduklarımı göster"
+        >
+          <CardContent className="p-3">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><ArrowDownCircle className="h-3.5 w-3.5" /> Toplam Alacağımız</div>
+            <div className="font-semibold">{paraStr(toplam.alacak)}</div>
+          </CardContent>
+        </Card>
+        <Card
+          className={`cursor-pointer hover:shadow-md transition-shadow ${filtre === 'BORCLU' ? 'ring-2 ring-secondary' : ''}`}
+          onClick={() => setFiltre((f) => (f === 'BORCLU' ? 'HEPSI' : 'BORCLU'))}
+          title="Sadece borçlu olduklarımı göster"
+        >
+          <CardContent className="p-3">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><ArrowUpCircle className="h-3.5 w-3.5" /> Toplam Borcumuz</div>
+            <div className="font-semibold">{paraStr(toplam.borc)}</div>
+          </CardContent>
+        </Card>
       </div>
 
       {showYeniCari && (
