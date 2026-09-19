@@ -46,6 +46,7 @@ model Santiye {
   projeEkMaliyetleri ProjeEkMaliyet[]
   akaryakitKayitlari AkaryakitKaydi[]
   calisanGunlukKonumlari CalisanGunlukKonum[]
+  faturalar   Fatura[]
 }
 
 model IsTuru {
@@ -398,6 +399,17 @@ model Fatura {
   odemeTarihi     DateTime?
   ibanBilgisi     String?
   yuklenici       String?
+  // Bu fatura hangi şantiye için kesildi/alındı — opsiyonel. Dolu olduğunda
+  // tutarı otomatik olarak o şantiyenin Proje Maliyeti toplam giderine eklenir
+  // (akaryakıt fişi etiketleme mantığının aynısı).
+  santiyeId       String?
+  santiye         Santiye?          @relation(fields: [santiyeId], references: [id])
+  // Piyasa Cari Durumu: karşı taraf tekrar seçilebilsin ve IBAN otomatik
+  // gelsin diye kayıtlı kişi/firma. cariEklensinMi işaretliyse bu faturanın
+  // tutarı o carinin alacak/borç bakiyesine dahil edilir.
+  cariId          String?
+  cari            Cari?             @relation(fields: [cariId], references: [id])
+  cariEklensinMi  Boolean           @default(false)
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
@@ -406,6 +418,47 @@ model Fatura {
   @@index([odemeDurumu])
   @@index([tur])
   @@index([sirketId])
+  @@index([santiyeId])
+  @@index([cariId])
+}
+
+// Piyasa Cari Durumu: "kim faturayı kesti / kime kestik" bilgisini tekrar
+// girmemek için saklanan kişi/firma kaydı — IBAN'ı da üzerinde tutar, fatura
+// formunda seçildiğinde otomatik doldurulsun diye. Fatura tutarlarından
+// (cariEklensinMi işaretliyse) ve CariOdeme kayıtlarından net bakiye
+// (alacak/borç) hesaplanır.
+model Cari {
+  id            String       @id @default(cuid())
+  ad            String       @unique
+  ibanBilgisi   String?
+  aciklama      String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  faturalar     Fatura[]
+  odemeler      CariOdeme[]
+}
+
+// Bir cari ile aramızdaki kısmi ödemeleri kaydeder (fatura tutarının
+// tamamı bir kerede ödenmemiş/tahsil edilmemiş olabilir).
+// TAHSILAT: bizim alacağımızdan düşer (karşı taraf bize ödedi)
+// ODEME:    bizim borcumuzdan düşer (biz karşı tarafa ödedik)
+model CariOdeme {
+  id        String         @id @default(cuid())
+  cariId    String
+  cari      Cari           @relation(fields: [cariId], references: [id])
+  tarih     DateTime
+  tutar     Float
+  yon       CariOdemeYonu
+  aciklama  String?
+  createdAt DateTime       @default(now())
+
+  @@index([cariId])
+  @@index([tarih])
+}
+
+enum CariOdemeYonu {
+  TAHSILAT
+  ODEME
 }
 
 // Haftalık Ödemeler görünümünde faturaya bağlı olmadan elle girilen ödeme

@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'PIN gerekli', code: 'PIN_GEREKLI' }, { status: 401 })
   }
 
-  const [santiyeler, akaryakitGruplari, ekMaliyetGruplari] = await Promise.all([
+  const [santiyeler, akaryakitGruplari, ekMaliyetGruplari, faturaGruplari] = await Promise.all([
     prisma.santiye.findMany({
       orderBy: { ad: 'asc' },
       include: {
@@ -37,6 +37,13 @@ export async function GET(req: NextRequest) {
       by: ['santiyeId'],
       _sum: { tutar: true },
     }),
+    // Şantiyeye etiketlenmiş, aldığımız (ALINAN) faturaların toplamı —
+    // Faturalar bölümünde bir şantiye seçildiyse otomatik gider olarak eklenir.
+    prisma.fatura.groupBy({
+      by: ['santiyeId'],
+      where: { santiyeId: { not: null }, tur: 'ALINAN' },
+      _sum: { kdvDahilTutar: true },
+    }),
   ])
   const ekMaliyetMap = new Map<string, number>()
   for (const g of ekMaliyetGruplari) {
@@ -45,6 +52,10 @@ export async function GET(req: NextRequest) {
   const akaryakitEtiketliMap = new Map<string, number>()
   for (const g of akaryakitGruplari) {
     if (g.santiyeId) akaryakitEtiketliMap.set(g.santiyeId, g._sum.tutar ?? 0)
+  }
+  const faturaEtiketliMap = new Map<string, number>()
+  for (const g of faturaGruplari) {
+    if (g.santiyeId) faturaEtiketliMap.set(g.santiyeId, g._sum.kdvDahilTutar ?? 0)
   }
 
   const sonuc = santiyeler.map((s) => {
@@ -72,9 +83,10 @@ export async function GET(req: NextRequest) {
     const akaryakitEtiketliToplam = akaryakitEtiketliMap.get(s.id) ?? 0
     const akaryakitToplam = (ozet ? ozet.akaryakitTutar : 0) + akaryakitEtiketliToplam
     const ekMaliyetToplam = ekMaliyetMap.get(s.id) ?? 0
+    const faturaToplam = faturaEtiketliMap.get(s.id) ?? 0
     const gelir = ozet?.gelir ?? 0
 
-    const toplamGider = malzemeToplam + aracToplam + nakliyeToplam + personelToplam + akaryakitToplam + ekMaliyetToplam
+    const toplamGider = malzemeToplam + aracToplam + nakliyeToplam + personelToplam + akaryakitToplam + ekMaliyetToplam + faturaToplam
     const netKarZarar = gelir - toplamGider
 
     return {
@@ -89,6 +101,7 @@ export async function GET(req: NextRequest) {
       personelToplam,
       akaryakitToplam,
       ekMaliyetToplam,
+      faturaToplam,
       toplamGider,
       gelir,
       netKarZarar,

@@ -10,12 +10,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   Lock, Receipt, Plus, Pencil, Trash2, Download, AlertTriangle,
-  ArrowDownCircle, ArrowUpCircle, LockKeyhole, Upload, FileText, Paperclip,
+  ArrowDownCircle, ArrowUpCircle, LockKeyhole, Upload, FileText, Paperclip, FileUp, Users,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { HaftalikOdemelerClient } from './haftalik-odemeler-client'
+import { CariDurumClient } from './cari-durum-client'
 
 interface Sirket { id: string; ad: string }
+interface Santiye { id: string; ad: string }
+interface Cari { id: string; ad: string; ibanBilgisi: string | null }
 
 interface Fatura {
   id: string
@@ -38,14 +41,20 @@ interface Fatura {
   odemeTarihi: string | null
   ibanBilgisi: string | null
   yuklenici: string | null
+  santiyeId: string | null
+  santiye: { id: string; ad: string } | null
+  cariId: string | null
+  cari: { id: string; ad: string; ibanBilgisi: string | null } | null
+  cariEklensinMi: boolean
 }
 
 const EMPTY_FORM = {
   tur: 'KESILEN' as 'KESILEN' | 'ALINAN',
   faturaNo: '', tarih: '', aciklama: '', karsiTaraf: '',
   tutar: '', kdvOrani: '20', kdvDahilTutar: '', tevkifatTutari: '',
-  vadeTarihi: '', odemeDurumu: 'BEKLIYOR' as Fatura['odemeDurumu'], sirketId: '',
+  odemeDurumu: 'BEKLIYOR' as Fatura['odemeDurumu'], sirketId: '',
   odemeTarihi: '', ibanBilgisi: '', yuklenici: '',
+  santiyeId: '', cariId: '', cariEklensinMi: false,
 }
 
 const DURUM_LABEL: Record<Fatura['odemeDurumu'], string> = {
@@ -157,6 +166,8 @@ export function FaturalarClient() {
   const [locked, setLocked] = useState<boolean | null>(null)
   const [faturalar, setFaturalar] = useState<Fatura[]>([])
   const [sirketler, setSirketler] = useState<Sirket[]>([])
+  const [santiyeler, setSantiyeler] = useState<Santiye[]>([])
+  const [cariler, setCariler] = useState<Cari[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
@@ -165,8 +176,14 @@ export function FaturalarClient() {
   const [saving, setSaving] = useState(false)
   const [detay, setDetay] = useState<Fatura | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [importSonuc, setImportSonuc] = useState<{ eklenen: number; atlanan: number; hatalar: string[] } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const excelImportInputRef = useRef<HTMLInputElement>(null)
   const pendingUploadIdRef = useRef<string | null>(null)
+  // Kullanıcı en son hangi KDV alanını elle değiştirdi — sonsuz döngüye
+  // girmeden çift yönlü (tutar <-> KDV dahil tutar) hesaplama yapabilmek için.
+  const kdvKaynakRef = useRef<'tutar' | 'dahil' | null>(null)
 
   const [filterTur, setFilterTur] = useState<'HEPSI' | 'KESILEN' | 'ALINAN'>('HEPSI')
   const [filterSirket, setFilterSirket] = useState('HEPSI')
@@ -187,24 +204,56 @@ export function FaturalarClient() {
     if (res.ok) {
       setLocked(false)
       setFaturalar(await res.json())
-      const sRes = await fetch('/api/sirketler')
+      const [sRes, stRes, cRes] = await Promise.all([
+        fetch('/api/sirketler'),
+        fetch('/api/santiyeler'),
+        fetch('/api/cariler'),
+      ])
       if (sRes.ok) setSirketler(await sRes.json())
+      if (stRes.ok) setSantiyeler(await stRes.json())
+      if (cRes.ok) setCariler(await cRes.json())
     }
     setLoading(false)
   }, [])
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  // Tutar veya KDV oranı değiştikçe KDV dahil tutarı otomatik hesapla
+  // Tutar <-> KDV dahil tutar çift yönlü otomatik hesaplama. Kullanıcı hangi
+  // alanı elle değiştirdiyse (kdvKaynakRef) o alan sabit kabul edilip diğeri
+  // ondan hesaplanır — ikisini birbirinden türetmeye çalışıp döngüye girmemek için.
   useEffect(() => {
-    const tutar = parseFloat(form.tutar)
     const oran = parseFloat(form.kdvOrani)
-    if (!isNaN(tutar) && !isNaN(oran)) {
-      const dahil = tutar + tutar * (oran / 100)
-      setForm((f) => ({ ...f, kdvDahilTutar: dahil.toFixed(2) }))
+    if (isNaN(oran)) return
+    if (kdvKaynakRef.current === 'dahil') {
+      const dahil = parseFloat(form.kdvDahilTutar)
+      if (!isNaN(dahil)) {
+        const tutar = dahil / (1 + oran / 100)
+        setForm((f) => (f.tutar === tutar.toFixed(2) ? f : { ...f, tutar: tutar.toFixed(2) }))
+      }
+    } else {
+      const tutar = parseFloat(form.tutar)
+      if (!isNaN(tutar)) {
+        const dahil = tutar + tutar * (oran / 100)
+        setForm((f) => (f.kdvDahilTutar === dahil.toFixed(2) ? f : { ...f, kdvDahilTutar: dahil.toFixed(2) }))
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.tutar, form.kdvOrani])
+  }, [form.tutar, form.kdvDahilTutar, form.kdvOrani])
+
+  const setTutar = (v: string) => { kdvKaynakRef.current = 'tutar'; setForm((f) => ({ ...f, tutar: v })) }
+  const setKdvDahilTutar = (v: string) => { kdvKaynakRef.current = 'dahil'; setForm((f) => ({ ...f, kdvDahilTutar: v })) }
+
+  // Karşı taraf alanına daha önce kayıtlı bir cari adı yazılıp/seçilip
+  // eşleştiğinde IBAN'ı otomatik doldurur.
+  const setKarsiTaraf = (v: string) => {
+    const eslesen = cariler.find((c) => c.ad.toLocaleLowerCase('tr-TR') === v.toLocaleLowerCase('tr-TR'))
+    setForm((f) => ({
+      ...f,
+      karsiTaraf: v,
+      cariId: eslesen?.id || '',
+      ibanBilgisi: eslesen?.ibanBilgisi ?? f.ibanBilgisi,
+    }))
+  }
 
   const handleLock = async () => {
     await fetch('/api/faturalar/dogrula', { method: 'DELETE' })
@@ -213,6 +262,7 @@ export function FaturalarClient() {
   }
 
   const resetForm = () => {
+    kdvKaynakRef.current = null
     setForm({ ...EMPTY_FORM })
     setShowForm(false)
     setEditId(null)
@@ -244,15 +294,16 @@ export function FaturalarClient() {
   }
 
   const handleEdit = (f: Fatura) => {
+    kdvKaynakRef.current = null
     setForm({
       tur: f.tur,
       faturaNo: f.faturaNo || '', tarih: f.tarih.slice(0, 10), aciklama: f.aciklama || '',
       karsiTaraf: f.karsiTaraf || '', tutar: f.tutar.toString(), kdvOrani: f.kdvOrani.toString(),
       kdvDahilTutar: f.kdvDahilTutar.toString(), tevkifatTutari: f.tevkifatTutari?.toString() || '',
-      vadeTarihi: f.vadeTarihi ? f.vadeTarihi.slice(0, 10) : '',
       odemeDurumu: f.odemeDurumu, sirketId: f.sirketId || '',
       odemeTarihi: f.odemeTarihi ? f.odemeTarihi.slice(0, 10) : '',
       ibanBilgisi: f.ibanBilgisi || '', yuklenici: f.yuklenici || '',
+      santiyeId: f.santiyeId || '', cariId: f.cariId || '', cariEklensinMi: f.cariEklensinMi,
     })
     setEditId(f.id)
     setShowForm(true)
@@ -322,15 +373,54 @@ export function FaturalarClient() {
       'KDV Tutarı': f.kdvTutari,
       'KDV Dahil Tutar': f.kdvDahilTutar,
       'Tevkifat': f.tevkifatTutari ?? '',
-      'Vade Tarihi': tarihStr(f.vadeTarihi),
       'Ödeme Durumu': DURUM_LABEL[f.odemeDurumu],
       'Şirket': f.sirket?.ad || '',
+      'Şantiye': f.santiye?.ad || '',
+      'Cari Eklendi mi': f.cariEklensinMi ? 'Evet' : 'Hayır',
       'PDF': f.pdfDosyaAdi || '',
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Faturalar')
     XLSX.writeFile(wb, 'faturalar.xlsx')
+  }
+
+  const handleExcelImportSec = () => {
+    setImportSonuc(null)
+    excelImportInputRef.current?.click()
+  }
+
+  const handleExcelImportSecildi = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const dosya = e.target.files?.[0]
+    e.target.value = ''
+    if (!dosya) return
+    setImporting(true)
+    try {
+      const buf = await dosya.arrayBuffer()
+      const wb = XLSX.read(buf, { type: 'array', cellDates: true })
+      const ilkSayfa = wb.SheetNames[0]
+      const satirlar = XLSX.utils.sheet_to_json(wb.Sheets[ilkSayfa], { defval: '' })
+      if (satirlar.length === 0) {
+        setImportSonuc({ eklenen: 0, atlanan: 0, hatalar: ['Dosyada okunacak satır bulunamadı'] })
+        return
+      }
+      const res = await fetch('/api/faturalar/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ satirlar, varsayilanTur: 'ALINAN', cariEklensinMi: true }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setImportSonuc({ eklenen: 0, atlanan: satirlar.length, hatalar: [data.error || 'Aktarma başarısız oldu'] })
+        return
+      }
+      setImportSonuc(data)
+      fetchAll()
+    } catch (err: any) {
+      setImportSonuc({ eklenen: 0, atlanan: 0, hatalar: ['Dosya okunamadı — geçerli bir Excel dosyası mı?'] })
+    } finally {
+      setImporting(false)
+    }
   }
 
   const filtreli = useMemo(() => {
@@ -365,6 +455,7 @@ export function FaturalarClient() {
   return (
     <div className="space-y-6">
       <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handlePdfSecildi} />
+      <input ref={excelImportInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleExcelImportSecildi} />
 
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -380,19 +471,37 @@ export function FaturalarClient() {
         <TabsList>
           <TabsTrigger value="faturalar">Faturalar</TabsTrigger>
           <TabsTrigger value="haftalik">Haftalık Ödemeler</TabsTrigger>
+          <TabsTrigger value="cari">Cari Durum</TabsTrigger>
         </TabsList>
 
         <TabsContent value="faturalar" className="space-y-6">
       <div className="flex items-center justify-end flex-wrap gap-2">
+        <Button variant="outline" size="sm" disabled={importing} onClick={handleExcelImportSec}>
+          <FileUp className="h-4 w-4 mr-1" /> {importing ? 'Aktarılıyor...' : 'Excelden Aktar'}
+        </Button>
         {faturalar.length > 0 && (
           <Button variant="outline" size="sm" onClick={handleExcelExport}>
-            <Download className="h-4 w-4 mr-1" /> Excel
+            <Download className="h-4 w-4 mr-1" /> Excele Aktar
           </Button>
         )}
         <Button onClick={() => { resetForm(); setShowForm(true) }} className="bg-secondary hover:bg-secondary/90" size="sm">
           <Plus className="h-4 w-4 mr-1" /> Yeni Fatura
         </Button>
       </div>
+
+      {importSonuc && (
+        <Card className="border-secondary/30">
+          <CardContent className="p-3 text-sm space-y-1">
+            <p className="font-medium">{importSonuc.eklenen} fatura eklendi{importSonuc.atlanan > 0 ? `, ${importSonuc.atlanan} satır atlandı` : ''}.</p>
+            {importSonuc.hatalar.length > 0 && (
+              <ul className="text-xs text-muted-foreground list-disc pl-4">
+                {importSonuc.hatalar.slice(0, 10).map((h, i) => <li key={i}>{h}</li>)}
+              </ul>
+            )}
+            <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setImportSonuc(null)}>Kapat</Button>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card><CardContent className="p-3">
@@ -458,7 +567,16 @@ export function FaturalarClient() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label>{form.tur === 'KESILEN' ? 'Kime Kesildi' : 'Kimden Alındı'}</Label>
-                  <Input value={form.karsiTaraf} onChange={(e) => set('karsiTaraf')(e.target.value)} placeholder="Firma / kişi adı" />
+                  <Input
+                    list="karsi-taraf-listesi"
+                    value={form.karsiTaraf}
+                    onChange={(e) => setKarsiTaraf(e.target.value)}
+                    placeholder="Firma / kişi adı — daha önce girilenler listeden seçilebilir"
+                  />
+                  <datalist id="karsi-taraf-listesi">
+                    {cariler.map((c) => <option key={c.id} value={c.ad} />)}
+                  </datalist>
+                  {form.cariId && <p className="text-xs text-muted-foreground mt-1">Kayıtlı cari bulundu, IBAN otomatik dolduruldu.</p>}
                 </div>
                 <div>
                   <Label>Fatura No</Label>
@@ -472,12 +590,20 @@ export function FaturalarClient() {
                   <Input type="date" value={form.tarih} onChange={(e) => set('tarih')(e.target.value)} required />
                 </div>
                 <div>
-                  <Label>Vade Tarihi</Label>
-                  <Input type="date" value={form.vadeTarihi} onChange={(e) => set('vadeTarihi')(e.target.value)} />
+                  <Label>Şantiye</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={form.santiyeId}
+                    onChange={(e) => set('santiyeId')(e.target.value)}
+                  >
+                    <option value="">— Seçilmedi —</option>
+                    {santiyeler.map((s) => <option key={s.id} value={s.id}>{s.ad}</option>)}
+                  </select>
+                  <p className="text-xs text-muted-foreground mt-1">Seçilirse tutar o şantiyenin Proje Maliyeti giderine eklenir.</p>
                 </div>
                 <div>
                   <Label>Tutar (KDV Hariç) *</Label>
-                  <Input type="number" step="any" value={form.tutar} onChange={(e) => set('tutar')(e.target.value)} required />
+                  <Input type="number" step="any" value={form.tutar} onChange={(e) => setTutar(e.target.value)} required />
                 </div>
                 <div>
                   <Label>KDV Oranı (%)</Label>
@@ -485,10 +611,20 @@ export function FaturalarClient() {
                 </div>
               </div>
 
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-input"
+                  checked={form.cariEklensinMi}
+                  onChange={(e) => setForm((f) => ({ ...f, cariEklensinMi: e.target.checked }))}
+                />
+                Cari eklensin mi? (Karşı tarafla aramızdaki alacak/borç durumunu Cari Durum'da takip et)
+              </label>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label>KDV Dahil Tutar</Label>
-                  <Input type="number" step="any" value={form.kdvDahilTutar} onChange={(e) => set('kdvDahilTutar')(e.target.value)} />
+                  <Input type="number" step="any" value={form.kdvDahilTutar} onChange={(e) => setKdvDahilTutar(e.target.value)} />
                   <p className="text-xs text-muted-foreground mt-1">Tutar/KDV oranı değişince otomatik hesaplanır, istersen elle düzelt.</p>
                 </div>
                 <div>
@@ -601,6 +737,10 @@ export function FaturalarClient() {
         <TabsContent value="haftalik">
           <HaftalikOdemelerClient faturalar={faturalar} sirketler={sirketler} />
         </TabsContent>
+
+        <TabsContent value="cari">
+          <CariDurumClient />
+        </TabsContent>
       </Tabs>
 
       <Dialog open={!!detay} onOpenChange={(open) => { if (!open) setDetay(null) }}>
@@ -618,10 +758,11 @@ export function FaturalarClient() {
                   <VadeBadge f={detay} />
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-muted-foreground">
-                  <div>Karşı Taraf</div><div className="text-right text-foreground">{detay.karsiTaraf || '—'}</div>
+                  <div>Karşı Taraf</div><div className="text-right text-foreground">{detay.karsiTaraf || '—'}{detay.cariEklensinMi && <span className="text-xs text-secondary ml-1">(Cari)</span>}</div>
                   <div>Şirket</div><div className="text-right text-foreground">{detay.sirket?.ad || '—'}</div>
+                  <div>Şantiye</div><div className="text-right text-foreground">{detay.santiye?.ad || '—'}</div>
                   <div>Tarih</div><div className="text-right text-foreground">{tarihStr(detay.tarih)}</div>
-                  <div>Vade Tarihi</div><div className="text-right text-foreground">{tarihStr(detay.vadeTarihi)}</div>
+                  {detay.vadeTarihi && (<><div>Vade Tarihi</div><div className="text-right text-foreground">{tarihStr(detay.vadeTarihi)}</div></>)}
                   <div>Tutar (KDV Hariç)</div><div className="text-right text-foreground">{paraStr(detay.tutar)}</div>
                   <div>KDV ({detay.kdvOrani}%)</div><div className="text-right text-foreground">{paraStr(detay.kdvTutari)}</div>
                   <div>KDV Dahil Tutar</div><div className="text-right text-foreground font-medium">{paraStr(detay.kdvDahilTutar)}</div>

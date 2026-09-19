@@ -30,7 +30,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sant
   const santiye = await prisma.santiye.findUnique({ where: { id: santiyeId } })
   if (!santiye) return NextResponse.json({ error: 'Şantiye bulunamadı' }, { status: 404 })
 
-  const [malzemeler, projeAraclar, aracGunleri, ozet, personelHarcamaToplamAgg, akaryakitEtiketliAgg, ekMaliyetler] = await Promise.all([
+  const [malzemeler, projeAraclar, aracGunleri, ozet, personelHarcamaToplamAgg, akaryakitEtiketliAgg, ekMaliyetler, faturaEtiketliAgg] = await Promise.all([
     prisma.projeMalzeme.findMany({
       where: { santiyeId },
       orderBy: [{ siraNo: 'asc' }, { createdAt: 'asc' }],
@@ -51,9 +51,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sant
     prisma.akaryakitKaydi.aggregate({ where: { santiyeId }, _sum: { tutar: true } }),
     // Tom'un kendi eklediği serbest ek maliyet kalemleri.
     prisma.projeEkMaliyet.findMany({ where: { santiyeId }, orderBy: { tarih: 'desc' } }),
+    // Bu şantiyeye etiketlenmiş, aldığımız (ALINAN) faturaların toplamı (Faturalar sayfasından).
+    prisma.fatura.aggregate({ where: { santiyeId, tur: 'ALINAN' }, _sum: { kdvDahilTutar: true } }),
   ])
   const personelHarcamaToplam = personelHarcamaToplamAgg._sum.tutar ?? 0
   const akaryakitEtiketliToplam = akaryakitEtiketliAgg._sum.tutar ?? 0
+  const faturaEtiketliToplam = faturaEtiketliAgg._sum.kdvDahilTutar ?? 0
 
   const toplamGunPerArac: Record<string, number> = {}
   for (const g of aracGunleri) {
@@ -86,6 +89,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sant
     gunlukTakip,
     personelHarcamaToplam,
     akaryakitEtiketliToplam,
+    faturaEtiketliToplam,
     ekMaliyetler,
     ozet: ozet ?? {
       gelir: 0,

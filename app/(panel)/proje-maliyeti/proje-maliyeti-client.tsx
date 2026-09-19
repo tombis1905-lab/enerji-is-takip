@@ -52,6 +52,7 @@ import {
   FolderOpen,
   PlusCircle,
   Upload,
+  Receipt,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { SafeDate } from '@/components/safe-format'
@@ -85,6 +86,7 @@ interface SantiyeSatir {
   personelToplam: number
   akaryakitToplam: number
   ekMaliyetToplam: number
+  faturaToplam: number
   toplamGider: number
   gelir: number
   netKarZarar: number
@@ -146,6 +148,7 @@ interface Detay {
   gunlukTakip: GunlukTakipSatir[]
   personelHarcamaToplam: number
   akaryakitEtiketliToplam: number
+  faturaEtiketliToplam: number
   ekMaliyetler: EkMaliyet[]
   ozet: Ozet
 }
@@ -420,7 +423,8 @@ function SantiyeDetay({ santiyeId, onChange }: { santiyeId: string; onChange: ()
     detay.personelHarcamaToplam
   const akaryakitToplam = detay.ozet.akaryakitTutar + detay.akaryakitEtiketliToplam
   const ekMaliyetToplam = detay.ekMaliyetler.reduce((a, k) => a + k.tutar, 0)
-  const toplamGider = malzemeToplam + aracToplam + nakliyeToplam + personelToplam + akaryakitToplam + ekMaliyetToplam
+  const faturaToplam = detay.faturaEtiketliToplam
+  const toplamGider = malzemeToplam + aracToplam + nakliyeToplam + personelToplam + akaryakitToplam + ekMaliyetToplam + faturaToplam
   const netKarZarar = detay.ozet.gelir - toplamGider
 
   const kirilim = [
@@ -429,6 +433,7 @@ function SantiyeDetay({ santiyeId, onChange }: { santiyeId: string; onChange: ()
     { ad: 'Nakliye', tutar: nakliyeToplam, icon: Truck, renk: 'bg-orange-500' },
     { ad: 'Personel', tutar: personelToplam, icon: Users, renk: 'bg-violet-500' },
     { ad: 'Akaryakıt', tutar: akaryakitToplam, icon: Fuel, renk: 'bg-rose-500' },
+    { ad: 'Faturalar', tutar: faturaToplam, icon: Receipt, renk: 'bg-cyan-500' },
     { ad: 'Ek Maliyetler', tutar: ekMaliyetToplam, icon: PlusCircle, renk: 'bg-teal-500' },
   ]
   const kirilimMax = Math.max(1, ...kirilim.map((k) => k.tutar))
@@ -465,6 +470,23 @@ function SantiyeDetay({ santiyeId, onChange }: { santiyeId: string; onChange: ()
           </CardContent>
         </Card>
       </Link>
+
+      {faturaToplam > 0 && (
+        <Link href={`/faturalar`}>
+          <Card className="hover:bg-muted/40 transition-colors cursor-pointer">
+            <CardContent className="p-4 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Receipt className="h-4 w-4 text-secondary" />
+                <div>
+                  <p className="font-semibold text-sm">Bu Şantiyeye Etiketlenen Faturalar</p>
+                  <p className="text-xs text-muted-foreground">Faturalar bölümünde bu şantiye seçilerek eklenen aldığımız faturaların toplamı (otomatik gider olarak eklenir)</p>
+                </div>
+              </div>
+              <span className="font-semibold text-sm whitespace-nowrap">{formatTL(faturaToplam)}</span>
+            </CardContent>
+          </Card>
+        </Link>
+      )}
 
       <DigerMaliyetlerBolumu santiyeId={santiyeId} ozet={detay.ozet} akaryakitEtiketliToplam={detay.akaryakitEtiketliToplam} onChange={refresh} />
 
