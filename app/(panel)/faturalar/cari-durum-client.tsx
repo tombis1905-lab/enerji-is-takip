@@ -28,8 +28,28 @@ interface CariOdeme {
   tarih: string
   tutar: number
   yon: 'TAHSILAT' | 'ODEME'
+  odemeSekli: string | null
   aciklama: string | null
 }
+
+interface CariFatura {
+  id: string
+  tur: 'KESILEN' | 'ALINAN'
+  faturaNo: string | null
+  tarih: string
+  aciklama: string | null
+  kdvDahilTutar: number
+  odemeDurumu: 'BEKLIYOR' | 'ODENDI' | 'GECIKTI'
+  cariEklensinMi: boolean
+}
+
+const DURUM_LABEL: Record<CariFatura['odemeDurumu'], string> = {
+  BEKLIYOR: 'Bekliyor',
+  ODENDI: 'Ödendi',
+  GECIKTI: 'Gecikti',
+}
+
+const ODEME_SEKLI_SECENEKLERI = ['Nakit', 'Havale/EFT', 'Çek']
 
 function paraStr(n: number) {
   return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(n) + ' ₺'
@@ -40,7 +60,7 @@ function tarihStr(d: string | null) {
   return new Date(d).toLocaleDateString('tr-TR')
 }
 
-const EMPTY_ODEME = { tarih: '', tutar: '', yon: 'TAHSILAT' as 'TAHSILAT' | 'ODEME', aciklama: '' }
+const EMPTY_ODEME = { tarih: '', tutar: '', yon: 'TAHSILAT' as 'TAHSILAT' | 'ODEME', odemeSekli: 'Nakit', aciklama: '' }
 const EMPTY_CARI_FORM = { ad: '', ibanBilgisi: '', aciklama: '' }
 
 export function CariDurumClient() {
@@ -50,6 +70,8 @@ export function CariDurumClient() {
   const [arama, setArama] = useState('')
   const [detay, setDetay] = useState<CariSatir | null>(null)
   const [odemeler, setOdemeler] = useState<CariOdeme[]>([])
+  const [faturalar, setFaturalar] = useState<CariFatura[]>([])
+  const [faturalarAcik, setFaturalarAcik] = useState(false)
   const [odemeForm, setOdemeForm] = useState({ ...EMPTY_ODEME })
   const [showOdemeForm, setShowOdemeForm] = useState(false)
   const [showYeniCari, setShowYeniCari] = useState(false)
@@ -69,11 +91,18 @@ export function CariDurumClient() {
     if (res.ok) setOdemeler(await res.json())
   }, [])
 
+  const fetchFaturalar = useCallback(async (cariId: string) => {
+    const res = await fetch(`/api/cariler/${cariId}/faturalar`)
+    if (res.ok) setFaturalar(await res.json())
+  }, [])
+
   const handleDetay = (c: CariSatir) => {
     setDetay(c)
     setShowOdemeForm(false)
+    setFaturalarAcik(false)
     setOdemeForm({ ...EMPTY_ODEME })
     fetchOdemeler(c.id)
+    fetchFaturalar(c.id)
   }
 
   const handleYeniCari = async (e: React.FormEvent) => {
@@ -181,7 +210,8 @@ export function CariDurumClient() {
     <div className="space-y-6">
       <p className="text-xs text-muted-foreground">
         Faturalar sekmesinde "Cari eklensin mi?" işaretlenen faturalar burada karşı tarafın alacak/borç bakiyesine yansır.
-        Tutarın tamamı ödenmediyse kısmi ödeme/tahsilat kaydı ekleyerek bakiyeyi güncelleyebilirsiniz.
+        Faturayı Faturalar sekmesinden "Ödendi" yaptığınızda o fatura tutarı buradaki bakiyeden otomatik düşer.
+        Tutarın sadece bir kısmını ödediyseniz/tahsil ettiyseniz, faturayı Ödendi yapmadan buradan kısmi ödeme/tahsilat kaydı ekleyerek bakiyeyi güncelleyebilirsiniz.
       </p>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -280,7 +310,7 @@ export function CariDurumClient() {
       )}
 
       <Dialog open={!!detay} onOpenChange={(open) => { if (!open) setDetay(null) }}>
-        <DialogContent>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           {detay && (
             <>
               <DialogHeader>
@@ -293,6 +323,43 @@ export function CariDurumClient() {
                   <div>Kesilen Fatura Toplamı</div><div className="text-right text-foreground">{paraStr(detay.kesilenToplam)}</div>
                   <div>Alınan Fatura Toplamı</div><div className="text-right text-foreground">{paraStr(detay.alinanToplam)}</div>
                   {detay.ibanBilgisi && (<><div>IBAN Bilgisi</div><div className="text-right text-foreground">{detay.ibanBilgisi}</div></>)}
+                </div>
+
+                <div>
+                  <button
+                    type="button"
+                    className="flex items-center justify-between w-full mb-2"
+                    onClick={() => setFaturalarAcik((v) => !v)}
+                  >
+                    <Label className="text-xs cursor-pointer">
+                      Faturalar ({faturalar.length} adet, toplam {paraStr(faturalar.reduce((s, f) => s + f.kdvDahilTutar, 0))})
+                    </Label>
+                    <span className="text-xs text-secondary">{faturalarAcik ? 'Gizle' : 'Göster'}</span>
+                  </button>
+                  {faturalarAcik && (
+                    faturalar.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Bu cariye ait fatura kaydı yok.</p>
+                    ) : (
+                      <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                        {faturalar.map((f) => (
+                          <div key={f.id} className="flex items-center justify-between text-xs border rounded-md px-2 py-1.5">
+                            <div>
+                              <span className={f.tur === 'KESILEN' ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'}>
+                                {f.tur === 'KESILEN' ? 'Kestiğimiz' : 'Aldığımız'}
+                              </span>
+                              {' · '}{tarihStr(f.tarih)}
+                              {f.faturaNo ? ` · ${f.faturaNo}` : ''}
+                              {f.aciklama ? ` · ${f.aciklama}` : ''}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className={f.odemeDurumu === 'ODENDI' ? 'text-muted-foreground' : ''}>{DURUM_LABEL[f.odemeDurumu]}</span>
+                              <span className="font-medium">{paraStr(f.kdvDahilTutar)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  )}
                 </div>
 
                 <div>
@@ -322,13 +389,29 @@ export function CariDurumClient() {
                           <Input type="date" value={odemeForm.tarih} onChange={(e) => setOdemeForm((f) => ({ ...f, tarih: e.target.value }))} required />
                         </div>
                       </div>
-                      <div>
-                        <Label className="text-xs">Tutar *</Label>
-                        <Input type="number" step="any" value={odemeForm.tutar} onChange={(e) => setOdemeForm((f) => ({ ...f, tutar: e.target.value }))} required />
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-xs">Tutar *</Label>
+                          <Input type="number" step="any" value={odemeForm.tutar} onChange={(e) => setOdemeForm((f) => ({ ...f, tutar: e.target.value }))} required />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Ödeme Şekli</Label>
+                          <select
+                            className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                            value={odemeForm.odemeSekli}
+                            onChange={(e) => setOdemeForm((f) => ({ ...f, odemeSekli: e.target.value }))}
+                          >
+                            {ODEME_SEKLI_SECENEKLERI.map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
                       </div>
                       <div>
                         <Label className="text-xs">Açıklama</Label>
-                        <Input value={odemeForm.aciklama} onChange={(e) => setOdemeForm((f) => ({ ...f, aciklama: e.target.value }))} />
+                        <Input
+                          value={odemeForm.aciklama}
+                          onChange={(e) => setOdemeForm((f) => ({ ...f, aciklama: e.target.value }))}
+                          placeholder={odemeForm.odemeSekli === 'Çek' ? 'Çek no / vade tarihi gibi notlar' : ''}
+                        />
                       </div>
                       {error && <p className="text-destructive text-sm">{error}</p>}
                       <div className="flex gap-2">
@@ -348,7 +431,7 @@ export function CariDurumClient() {
                             <span className={o.yon === 'TAHSILAT' ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'}>
                               {o.yon === 'TAHSILAT' ? 'Tahsilat' : 'Ödeme'}
                             </span>
-                            {' · '}{tarihStr(o.tarih)}{o.aciklama ? ` · ${o.aciklama}` : ''}
+                            {' · '}{tarihStr(o.tarih)}{o.odemeSekli ? ` · ${o.odemeSekli}` : ''}{o.aciklama ? ` · ${o.aciklama}` : ''}
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{paraStr(o.tutar)}</span>

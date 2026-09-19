@@ -37,7 +37,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!cari) return NextResponse.json({ error: 'Cari bulunamadı' }, { status: 404 })
 
   const body = await req.json()
-  const { tarih, tutar, yon, aciklama } = body
+  const { tarih, tutar, yon, aciklama, odemeSekli } = body
 
   if (!tarih) return NextResponse.json({ error: 'Tarih zorunludur' }, { status: 400 })
   if (!tutar || Number(tutar) <= 0) return NextResponse.json({ error: 'Geçerli bir tutar girin' }, { status: 400 })
@@ -51,6 +51,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       tarih: new Date(tarih),
       tutar: Number(tutar),
       yon,
+      odemeSekli: odemeSekli?.trim() || null,
       aciklama: aciklama?.trim() || null,
     },
   })

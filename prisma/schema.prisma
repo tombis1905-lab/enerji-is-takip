@@ -443,14 +443,18 @@ model Cari {
 // TAHSILAT: bizim alacağımızdan düşer (karşı taraf bize ödedi)
 // ODEME:    bizim borcumuzdan düşer (biz karşı tarafa ödedik)
 model CariOdeme {
-  id        String         @id @default(cuid())
-  cariId    String
-  cari      Cari           @relation(fields: [cariId], references: [id])
-  tarih     DateTime
-  tutar     Float
-  yon       CariOdemeYonu
-  aciklama  String?
-  createdAt DateTime       @default(now())
+  id         String         @id @default(cuid())
+  cariId     String
+  cari       Cari           @relation(fields: [cariId], references: [id])
+  tarih      DateTime
+  tutar      Float
+  yon        CariOdemeYonu
+  // Nakit / Havale-EFT / Çek — Tom bazen borcunu çek vererek kapatıyor, bu
+  // durumda ödemenin şekli burada not düşülür (tutarın bakiyeden düşme
+  // mantığı hepsinde aynı, sadece nasıl ödendiği/tahsil edildiği kaydedilir).
+  odemeSekli String?
+  aciklama   String?
+  createdAt  DateTime       @default(now())
 
   @@index([cariId])
   @@index([tarih])

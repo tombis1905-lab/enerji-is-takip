@@ -26,10 +26,15 @@ export async function GET(req: NextRequest) {
 
   const [cariler, faturaGruplari, odemeGruplari] = await Promise.all([
     prisma.cari.findMany({ orderBy: { ad: 'asc' } }),
-    // Cari eklensin mi işaretli faturaların tür bazında toplamı (KESILEN -> alacak tahakkuku, ALINAN -> borç tahakkuku)
+    // Cari eklensin mi işaretli faturaların tür bazında toplamı (KESILEN -> alacak tahakkuku, ALINAN -> borç tahakkuku).
+    // "Ödendi" olarak işaretlenen faturalar tamamen kapanmış sayılır ve
+    // bakiyeye dahil edilmez — Faturalar listesinde durumu Ödendi yapmak,
+    // burada borcu/alacağı doğrudan düşürür. Hâlâ Bekliyor/Gecikti olanlar
+    // (kısmen ödenmiş olabilir) toplama girer, kısmi kısmı da CariOdeme
+    // kayıtlarından ayrıca düşülür.
     prisma.fatura.groupBy({
       by: ['cariId', 'tur'],
-      where: { cariId: { not: null }, cariEklensinMi: true },
+      where: { cariId: { not: null }, cariEklensinMi: true, odemeDurumu: { not: 'ODENDI' } },
       _sum: { kdvDahilTutar: true },
     }),
     // Kısmi ödeme/tahsilat kayıtlarının yön bazında toplamı
