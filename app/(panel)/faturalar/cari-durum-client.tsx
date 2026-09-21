@@ -43,6 +43,32 @@ interface CariFatura {
   cariEklensinMi: boolean
 }
 
+// Excele Aktar için: tek istekte tüm carilerin fatura/ödeme geçmişiyle
+// birlikte gelen ayrıntılı rapor kaydı (bkz. /api/cariler/rapor).
+interface CariRaporFatura {
+  tur: 'KESILEN' | 'ALINAN'
+  faturaNo: string | null
+  tarih: string
+  aciklama: string | null
+  tutar: number
+  kdvDahilTutar: number
+  ibanBilgisi: string | null
+  odemeDurumu: 'BEKLIYOR' | 'ODENDI' | 'GECIKTI'
+  cariEklensinMi: boolean
+  sirketAd: string | null
+}
+interface CariRaporOdeme {
+  tarih: string
+  tutar: number
+  yon: 'TAHSILAT' | 'ODEME'
+  odemeSekli: string | null
+  aciklama: string | null
+}
+interface CariRaporSatir extends CariSatir {
+  faturalar: CariRaporFatura[]
+  odemeler: CariRaporOdeme[]
+}
+
 const DURUM_LABEL: Record<CariFatura['odemeDurumu'], string> = {
   BEKLIYOR: 'Bekliyor',
   ODENDI: 'Ödendi',
@@ -77,6 +103,7 @@ export function CariDurumClient() {
   const [showYeniCari, setShowYeniCari] = useState(false)
   const [cariForm, setCariForm] = useState({ ...EMPTY_CARI_FORM })
   const [error, setError] = useState('')
+  const [exporting, setExporting] = useState(false)
 
   const fetchAll = useCallback(async () => {
     const res = await fetch('/api/cariler')
@@ -179,23 +206,111 @@ export function CariDurumClient() {
     )
   }, [filtreli])
 
-  const handleExcelExport = () => {
-    const rows = filtreli.map((c) => ({
-      'Cari': c.ad,
-      'IBAN Bilgisi': c.ibanBilgisi || '',
-      'Kesilen Fatura Toplamı': c.kesilenToplam,
-      'Alınan Fatura Toplamı': c.alinanToplam,
-      'Tahsilat Toplamı': c.tahsilatToplam,
-      'Ödeme Toplamı': c.odemeToplam,
-      'Alacağımız': c.alacak,
-      'Borcumuz': c.borc,
-      'Net Bakiye': c.netBakiye,
-      'Açıklama': c.aciklama || '',
-    }))
-    const ws = XLSX.utils.json_to_sheet(rows)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Cari Durum')
-    XLSX.writeFile(wb, 'cari_durum.xlsx')
+  // Tom'un eskiden elle tuttuğu "Piyasa Cari 2026" Excel şablonuna benzer bir
+  // rapor üretir: bir "Özet Tablo" sayfası (S.NO / Şirket Kodu / Firma Adı /
+  // Toplam Borç / Toplam Ödenen-Alacak / Kalan Bakiye / Durum) ve her cari
+  // için ayrı bir sayfa (o cariye ait tüm fatura + ödeme/tahsilat kayıtları,
+  // bölüm başlıkları ve genel toplamlarıyla). Ekrandaki arama/filtre neyi
+  // gösteriyorsa sadece o cariler dahil edilir.
+  const handleExcelExport = async () => {
+    setExporting(true)
+    try {
+      const res = await fetch('/api/cariler/rapor')
+      if (!res.ok) {
+        alert('Rapor hazırlanamadı, tekrar deneyin.')
+        return
+      }
+      const tumRapor: CariRaporSatir[] = await res.json()
+      const gorunenIdler = new Set(filtreli.map((c) => c.id))
+      const rapor = tumRapor.filter((c) => gorunenIdler.has(c.id))
+
+      const wb = XLSX.utils.book_new()
+
+      // --- Özet Tablo ---
+      const ozetSatirlari: any[][] = [
+        ['PİYASA CARİ DURUMU ÖZET RAPORU'],
+        [],
+        ['S.NO', 'ŞİRKET KODU', 'FİRMA ADI', 'TOPLAM BORÇ (₺)', 'TOPLAM ÖDENEN - ALACAK (₺)', 'KALAN BAKİYE (₺)', 'DURUM'],
+      ]
+      let toplamBorcTarafi = 0
+      let toplamAlacakTarafi = 0
+      rapor.forEach((c, i) => {
+        const borcTarafi = c.alinanToplam + c.tahsilatToplam
+        const alacakTarafi = c.kesilenToplam + c.odemeToplam
+        const kalanBakiye = borcTarafi - alacakTarafi
+        toplamBorcTarafi += borcTarafi
+        toplamAlacakTarafi += alacakTarafi
+        const durum = kalanBakiye < 0 ? 'BORÇLU' : kalanBakiye > 0 ? 'ALACAKLI' : ''
+        ozetSatirlari.push([i + 1, `FRM-${String(i + 1).padStart(2, '0')}`, c.ad, borcTarafi, alacakTarafi, kalanBakiye, durum])
+      })
+      ozetSatirlari.push([null, null, 'GENEL TOPLAM', toplamBorcTarafi, toplamAlacakTarafi, toplamBorcTarafi - toplamAlacakTarafi, null])
+      const ozetWs = XLSX.utils.aoa_to_sheet(ozetSatirlari)
+      ozetWs['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 32 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 12 }]
+      XLSX.utils.book_append_sheet(wb, ozetWs, 'Özet Tablo')
+
+      // --- Her cari için ayrı sayfa ---
+      rapor.forEach((c, i) => {
+        const borcTarafi = c.alinanToplam + c.tahsilatToplam
+        const alacakTarafi = c.kesilenToplam + c.odemeToplam
+        const kalanBakiye = borcTarafi - alacakTarafi
+
+        const satirlar: any[][] = [
+          [c.ad, null, null, null, null, null, null, '← Özet Tabloya Dön'],
+          ['TOPLAM BORÇ (KDV DAHİL)', 'TOPLAM ÖDENEN / TAHSİL EDİLEN', 'KALAN BAKİYE'],
+          [borcTarafi, alacakTarafi, kalanBakiye],
+          [],
+        ]
+
+        const faturaBolumu = (baslik: string, tur: 'ALINAN' | 'KESILEN') => {
+          const kayitlar = c.faturalar.filter((f) => f.tur === tur)
+          satirlar.push([baslik])
+          satirlar.push(['FATURA NO', 'TARİH', 'AÇIKLAMA', 'KDV HARİÇ TUTAR', 'KDV DAHİL TUTAR', 'IBAN BİLGİSİ', 'DURUM', 'ŞİRKET'])
+          let tutarToplam = 0
+          let kdvDahilToplam = 0
+          kayitlar.forEach((f) => {
+            tutarToplam += f.tutar
+            kdvDahilToplam += f.kdvDahilTutar
+            satirlar.push([
+              f.faturaNo || '',
+              tarihStr(f.tarih),
+              f.aciklama || '',
+              f.tutar,
+              f.kdvDahilTutar,
+              f.ibanBilgisi || '',
+              DURUM_LABEL[f.odemeDurumu],
+              f.sirketAd || '',
+            ])
+          })
+          if (kayitlar.length === 0) satirlar.push(['(Kayıt yok)'])
+          satirlar.push(['GENEL TOPLAM', '', '', tutarToplam, kdvDahilToplam, '', '', ''])
+          satirlar.push([])
+        }
+
+        faturaBolumu('BORÇ KAYITLARI (ALDIĞIMIZ FATURALAR)', 'ALINAN')
+        faturaBolumu('ALACAK KAYITLARI (KESTİĞİMİZ FATURALAR)', 'KESILEN')
+
+        satirlar.push(['ÖDEME / TAHSİLAT KAYITLARI'])
+        satirlar.push(['TARİH', 'YÖN', 'AÇIKLAMA', 'ÖDEME ŞEKLİ', 'TUTAR'])
+        let odemeToplam = 0
+        c.odemeler.forEach((o) => {
+          odemeToplam += o.tutar
+          satirlar.push([tarihStr(o.tarih), o.yon === 'TAHSILAT' ? 'Tahsilat' : 'Ödeme', o.aciklama || '', o.odemeSekli || '', o.tutar])
+        })
+        if (c.odemeler.length === 0) satirlar.push(['(Kayıt yok)'])
+        satirlar.push(['GENEL TOPLAM', '', '', '', odemeToplam])
+
+        const ws = XLSX.utils.aoa_to_sheet(satirlar)
+        ws['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 32 }, { wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 12 }, { wch: 14 }]
+        // Sayfa adı Excel kısıtı (max 31 karakter, bazı özel karakterler yasak)
+        // yüzünden özgün firma adı yerine kısa bir kod kullanılır — firma adı
+        // sayfanın ilk satırında ve Özet Tablo'da zaten görünüyor.
+        XLSX.utils.book_append_sheet(wb, ws, `Firma_${i + 1}`)
+      })
+
+      XLSX.writeFile(wb, 'piyasa_cari_2026.xlsx')
+    } finally {
+      setExporting(false)
+    }
   }
 
   if (loading) {
@@ -230,8 +345,8 @@ export function CariDurumClient() {
         </div>
         <div className="flex gap-2">
           {filtreli.length > 0 && (
-            <Button variant="outline" size="sm" onClick={handleExcelExport}>
-              <Download className="h-4 w-4 mr-1" /> Excel
+            <Button variant="outline" size="sm" disabled={exporting} onClick={handleExcelExport}>
+              <Download className="h-4 w-4 mr-1" /> {exporting ? 'Hazırlanıyor...' : 'Excel'}
             </Button>
           )}
           <Button size="sm" className="bg-secondary hover:bg-secondary/90" onClick={() => { setCariForm({ ...EMPTY_CARI_FORM }); setError(''); setShowYeniCari(true) }}>
@@ -300,7 +415,7 @@ export function CariDurumClient() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-3">
           {filtreli.map((c) => (
             <Card key={c.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => handleDetay(c)}>
               <CardContent className="p-4 space-y-1.5">
@@ -310,7 +425,6 @@ export function CariDurumClient() {
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
-                {c.ibanBilgisi && <div className="text-xs text-muted-foreground">{c.ibanBilgisi}</div>}
                 <div className="flex items-center gap-4 pt-1 text-sm">
                   <span className="text-green-600 dark:text-green-400">Alacak: {paraStr(c.alacak)}</span>
                   <span className="text-orange-600 dark:text-orange-400">Borç: {paraStr(c.borc)}</span>
@@ -340,13 +454,13 @@ export function CariDurumClient() {
                 <div>
                   <button
                     type="button"
-                    className="flex items-center justify-between w-full mb-2"
+                    className="flex items-center justify-between w-full mb-2 rounded-lg border border-secondary/30 bg-secondary/5 hover:bg-secondary/10 transition-colors px-3 py-2.5"
                     onClick={() => setFaturalarAcik((v) => !v)}
                   >
-                    <Label className="text-xs cursor-pointer">
+                    <span className="text-sm font-medium cursor-pointer">
                       Faturalar ({faturalar.length} adet, toplam {paraStr(faturalar.reduce((s, f) => s + f.kdvDahilTutar, 0))})
-                    </Label>
-                    <span className="text-xs text-secondary">{faturalarAcik ? 'Gizle' : 'Göster'}</span>
+                    </span>
+                    <span className="text-sm font-medium text-secondary shrink-0 ml-2">{faturalarAcik ? 'Gizle ▲' : 'Göster ▼'}</span>
                   </button>
                   {faturalarAcik && (
                     faturalar.length === 0 ? (
