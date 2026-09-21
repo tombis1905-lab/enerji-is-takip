@@ -252,6 +252,11 @@ export function FaturalarClient() {
       karsiTaraf: v,
       cariId: eslesen?.id || '',
       ibanBilgisi: eslesen?.ibanBilgisi ?? f.ibanBilgisi,
+      // Listeden kayıtlı bir cari seçildiğinde "Cari eklensin mi?" da otomatik
+      // işaretlensin — aksi halde fatura carinin geçmişinde görünür ama
+      // alacak/borç bakiyesine hiç yansımaz, bu da kafa karıştırıyordu
+      // (Tom: "2 fatura ekledim ama alacağımdan düşmedi").
+      cariEklensinMi: eslesen ? true : f.cariEklensinMi,
     }))
   }
 
@@ -312,10 +317,18 @@ export function FaturalarClient() {
   }
 
   const handleDurumChange = async (f: Fatura, odemeDurumu: Fatura['odemeDurumu']) => {
+    // "Ödendi"ye tıklandığı an, o tarih ödeme tarihi olarak kaydedilir —
+    // böylece faturanın kesildiği tarih ile fiilen ödendiği tarih ayrı ayrı
+    // görülebilir (Tom: "adam şu tarihte fatura kesti, ben şu tarihte ödedim").
+    const body: any = { odemeDurumu }
+    if (odemeDurumu === 'ODENDI') {
+      const bugun = new Date()
+      body.odemeTarihi = `${bugun.getFullYear()}-${String(bugun.getMonth() + 1).padStart(2, '0')}-${String(bugun.getDate()).padStart(2, '0')}`
+    }
     await fetch(`/api/faturalar/${f.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ odemeDurumu }),
+      body: JSON.stringify(body),
     })
     fetchAll()
     setDetay(null)
