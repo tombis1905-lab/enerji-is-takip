@@ -1,9 +1,24 @@
 export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
+import path from 'path'
 import { auth } from '@/auth'
 import { faturaTokenGecerliMi, FATURA_COOKIE_NAME } from '@/lib/fatura-auth'
 import { PDFParse } from 'pdf-parse'
+
+// pdfjs-dist (pdf-parse'ın altyapısı), Node'da metni işlerken kendi "worker"
+// dosyasını (pdf.worker.mjs) göreli bir yoldan ("./pdf.worker.mjs") dinamik
+// import ile yüklemeye çalışıyor. Next.js'in derlediği sunucu paketinde bu
+// dosya o göreli konumda bulunmuyor ("Cannot find module .../pdf.worker.mjs"
+// hatası buradan geliyordu). Worker dosyasının node_modules içindeki gerçek,
+// mutlak konumunu doğrudan belirterek bu sorunu çözüyoruz — dinamik import
+// Next'in derleme/paketleme adımından geçmediği için (kütüphane bunu bilerek
+// "webpackIgnore" ile işaretlemiş) diskteki gerçek dosyaya ulaşabiliyor.
+try {
+  PDFParse.setWorker(path.join(process.cwd(), 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.mjs'))
+} catch {
+  // setWorker başarısız olsa bile aşağıdaki akış genel bir hata mesajıyla devam eder.
+}
 
 async function guard(req: NextRequest) {
   const session = await auth()
