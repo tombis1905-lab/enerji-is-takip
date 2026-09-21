@@ -117,6 +117,8 @@ export async function POST(req: NextRequest) {
       ibanBilgisi: ibanTahminEt(metin),
     })
   } catch (e: any) {
-    return NextResponse.json({ error: 'PDF okunamadı' }, { status: 500 })
+    // Tanı için sunucu loguna tam hatayı yazıyoruz; kullanıcıya kısa mesaj dönüyoruz.
+    console.error('pdf-oku hata:', e?.message || e, e?.stack || '')
+    return NextResponse.json({ error: `PDF okunamadı: ${e?.message || 'bilinmeyen hata'}` }, { status: 500 })
   }
 }
