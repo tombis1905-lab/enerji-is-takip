@@ -180,7 +180,15 @@ export function FaturalarClient() {
   const [importSonuc, setImportSonuc] = useState<{ eklenen: number; atlanan: number; hatalar: string[] } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const excelImportInputRef = useRef<HTMLInputElement>(null)
+  const pdfImportInputRef = useRef<HTMLInputElement>(null)
   const pendingUploadIdRef = useRef<string | null>(null)
+  // PDF'ten Aktar akışında: kullanıcı bir PDF seçtiğinde önce alanları tahmin
+  // ediyoruz ve Yeni Fatura formunu bu tahminlerle dolu açıyoruz; kullanıcı
+  // kontrol edip kaydettiğinde, faturayı oluşturur oluşturmaz aynı PDF'i
+  // faturaya ek olarak da otomatik yüklüyoruz (elle tekrar seçmesin diye).
+  const [pdfOkunuyor, setPdfOkunuyor] = useState(false)
+  const [pdfOkumaUyari, setPdfOkumaUyari] = useState('')
+  const pendingPdfImportFileRef = useRef<File | null>(null)
   // Kullanıcı en son hangi KDV alanını elle değiştirdi — sonsuz döngüye
   // girmeden çift yönlü (tutar <-> KDV dahil tutar) hesaplama yapabilmek için.
   const kdvKaynakRef = useRef<'tutar' | 'dahil' | null>(null)
@@ -268,6 +276,8 @@ export function FaturalarClient() {
 
   const resetForm = () => {
     kdvKaynakRef.current = null
+    pendingPdfImportFileRef.current = null
+    setPdfOkumaUyari('')
     setForm({ ...EMPTY_FORM })
     setShowForm(false)
     setEditId(null)
@@ -290,6 +300,17 @@ export function FaturalarClient() {
         const data = await res.json()
         setError(data.error || 'Hata oluştu')
         return
+      }
+      // PDF'ten Aktar ile açılan formda bekleyen bir dosya varsa (sadece yeni
+      // kayıtta, düzenlemede değil), fatura oluşur oluşmaz aynı PDF'i o
+      // faturaya otomatik ekliyoruz — Tom'un ayrıca PDF yükle demesine gerek yok.
+      if (!editId && pendingPdfImportFileRef.current) {
+        const kaydedilenFatura = await res.json()
+        const fd = new FormData()
+        fd.append('faturaId', kaydedilenFatura.id)
+        fd.append('dosya', pendingPdfImportFileRef.current)
+        await fetch('/api/faturalar/upload', { method: 'POST', body: fd })
+        pendingPdfImportFileRef.current = null
       }
       resetForm()
       fetchAll()
@@ -371,6 +392,46 @@ export function FaturalarClient() {
       setDetay((d) => (d && d.id === faturaId ? { ...d, pdfDosyaAdi: dosya.name } : d))
     } finally {
       setUploading(false)
+    }
+  }
+
+  const handlePdfImportSec = () => {
+    setPdfOkumaUyari('')
+    pdfImportInputRef.current?.click()
+  }
+
+  const handlePdfImportSecildi = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const dosya = e.target.files?.[0]
+    e.target.value = ''
+    if (!dosya) return
+    setPdfOkunuyor(true)
+    setPdfOkumaUyari('')
+    try {
+      const fd = new FormData()
+      fd.append('dosya', dosya)
+      const res = await fetch('/api/faturalar/pdf-oku', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.error || 'PDF okunamadı')
+        return
+      }
+      pendingPdfImportFileRef.current = dosya
+      setEditId(null)
+      setForm({
+        ...EMPTY_FORM,
+        tur: 'ALINAN',
+        faturaNo: data.faturaNo || '',
+        tarih: data.tarih || EMPTY_FORM.tarih,
+        kdvDahilTutar: data.kdvDahilTutar != null ? String(data.kdvDahilTutar) : '',
+        ibanBilgisi: data.ibanBilgisi || '',
+      })
+      if (data.kdvDahilTutar != null) kdvKaynakRef.current = 'dahil'
+      if (data.uyari) setPdfOkumaUyari(data.uyari)
+      setShowForm(true)
+    } catch {
+      alert('PDF okunamadı')
+    } finally {
+      setPdfOkunuyor(false)
     }
   }
 
@@ -475,6 +536,7 @@ export function FaturalarClient() {
     <div className="space-y-6">
       <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handlePdfSecildi} />
       <input ref={excelImportInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleExcelImportSecildi} />
+      <input ref={pdfImportInputRef} type="file" accept="application/pdf" className="hidden" onChange={handlePdfImportSecildi} />
 
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -497,6 +559,9 @@ export function FaturalarClient() {
       <div className="flex items-center justify-end flex-wrap gap-2">
         <Button variant="outline" size="sm" disabled={importing} onClick={handleExcelImportSec}>
           <FileUp className="h-4 w-4 mr-1" /> {importing ? 'Aktarılıyor...' : 'Excelden Aktar'}
+        </Button>
+        <Button variant="outline" size="sm" disabled={pdfOkunuyor} onClick={handlePdfImportSec} title="PDF faturayı yükle, alanları otomatik doldursun">
+          <FileText className="h-4 w-4 mr-1" /> {pdfOkunuyor ? 'Okunuyor...' : "PDF'ten Aktar"}
         </Button>
         {faturalar.length > 0 && (
           <Button variant="outline" size="sm" onClick={handleExcelExport}>
@@ -523,14 +588,32 @@ export function FaturalarClient() {
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card><CardContent className="p-3">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><ArrowDownCircle className="h-3.5 w-3.5" /> Bekleyen Alacak (Kesilen)</div>
-          <div className="font-semibold">{paraStr(ozet.bekleyenKesilen)}</div>
-        </CardContent></Card>
-        <Card><CardContent className="p-3">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><ArrowUpCircle className="h-3.5 w-3.5" /> Bekleyen Borç (Alınan)</div>
-          <div className="font-semibold">{paraStr(ozet.bekleyenAlinan)}</div>
-        </CardContent></Card>
+        <Card
+          className={`cursor-pointer hover:shadow-md transition-shadow ${filterTur === 'KESILEN' && !showCompleted ? 'ring-2 ring-secondary' : ''}`}
+          onClick={() => {
+            setFilterTur((t) => (t === 'KESILEN' && !showCompleted ? 'HEPSI' : 'KESILEN'))
+            setShowCompleted(false)
+          }}
+          title="Ödenmemiş kestiğimiz faturaları göster"
+        >
+          <CardContent className="p-3">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><ArrowDownCircle className="h-3.5 w-3.5" /> Bekleyen Alacak (Kesilen)</div>
+            <div className="font-semibold">{paraStr(ozet.bekleyenKesilen)}</div>
+          </CardContent>
+        </Card>
+        <Card
+          className={`cursor-pointer hover:shadow-md transition-shadow ${filterTur === 'ALINAN' && !showCompleted ? 'ring-2 ring-secondary' : ''}`}
+          onClick={() => {
+            setFilterTur((t) => (t === 'ALINAN' && !showCompleted ? 'HEPSI' : 'ALINAN'))
+            setShowCompleted(false)
+          }}
+          title="Ödenmemiş, kime borcumuz olduğunu gösteren aldığımız faturaları göster"
+        >
+          <CardContent className="p-3">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><ArrowUpCircle className="h-3.5 w-3.5" /> Bekleyen Borç (Alınan)</div>
+            <div className="font-semibold">{paraStr(ozet.bekleyenAlinan)}</div>
+          </CardContent>
+        </Card>
         <Card><CardContent className="p-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><AlertTriangle className="h-3.5 w-3.5" /> Yaklaşan / Geçen</div>
           <div className="font-semibold">{ozet.yaklasan}</div>
@@ -547,6 +630,11 @@ export function FaturalarClient() {
             <CardTitle className="text-lg">{editId ? 'Fatura Düzenle' : 'Yeni Fatura Ekle'}</CardTitle>
           </CardHeader>
           <CardContent>
+            {pdfOkumaUyari && (
+              <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-400">
+                {pdfOkumaUyari}
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>

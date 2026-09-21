@@ -23,6 +23,7 @@ interface FaturaKalemi {
   yuklenici: string | null
   sirketId: string | null
   sirket: { ad: string } | null
+  odemeDurumu: 'BEKLIYOR' | 'ODENDI' | 'GECIKTI'
 }
 
 interface HaftalikOdeme {
@@ -52,6 +53,19 @@ interface Satir {
   tutar: number
   yuklenici: string
   sirketId: string
+  odemeDurumu: 'BEKLIYOR' | 'ODENDI' | 'GECIKTI' | null
+}
+
+const DURUM_LABEL: Record<'BEKLIYOR' | 'ODENDI' | 'GECIKTI', string> = {
+  BEKLIYOR: 'Bekliyor',
+  ODENDI: 'Ödendi',
+  GECIKTI: 'Gecikti',
+}
+
+const DURUM_RENK: Record<'BEKLIYOR' | 'ODENDI' | 'GECIKTI', string> = {
+  BEKLIYOR: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  GECIKTI: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  ODENDI: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
 }
 
 const EMPTY_FORM = {
@@ -168,6 +182,7 @@ export function HaftalikOdemelerClient({ faturalar, sirketler }: { faturalar: Fa
         tutar: f.kdvDahilTutar,
         yuklenici: f.yuklenici || '',
         sirketId: f.sirketId as string,
+        odemeDurumu: f.odemeDurumu,
       }))
   }, [faturalar])
 
@@ -184,6 +199,7 @@ export function HaftalikOdemelerClient({ faturalar, sirketler }: { faturalar: Fa
       tutar: k.tutar,
       yuklenici: k.yuklenici || '',
       sirketId: k.sirketId,
+      odemeDurumu: null,
     }))
   }, [kalemler])
 
@@ -206,8 +222,11 @@ export function HaftalikOdemelerClient({ faturalar, sirketler }: { faturalar: Fa
           const baslangic = startOfISOWeek(ilkTarih)
           const bitis = endOfISOWeek(ilkTarih)
           const toplam = satirlar.reduce((s, x) => s + x.tutar, 0)
+          const bekleyenToplam = satirlar.filter((x) => x.odemeDurumu === 'BEKLIYOR' || x.odemeDurumu === 'GECIKTI').reduce((s, x) => s + x.tutar, 0)
+          const odenenToplam = toplam - bekleyenToplam
+          const gecikenSayisi = satirlar.filter((x) => x.odemeDurumu === 'GECIKTI').length
           satirlar.sort((a, b) => new Date(haftaTarihi(b)).getTime() - new Date(haftaTarihi(a)).getTime())
-          return { anahtar, hafta: getISOWeek(ilkTarih), baslangic, bitis, satirlar, toplam }
+          return { anahtar, hafta: getISOWeek(ilkTarih), baslangic, bitis, satirlar, toplam, bekleyenToplam, odenenToplam, gecikenSayisi }
         })
         .sort((a, b) => b.baslangic.getTime() - a.baslangic.getTime())
       return { sirket, haftaListesi }
@@ -222,6 +241,7 @@ export function HaftalikOdemelerClient({ faturalar, sirketler }: { faturalar: Fa
           rows.push({
             'Şirket': sirket.ad,
             'Hafta': `${hafta.hafta}. HAFTA`,
+            'Durum': s.odemeDurumu ? DURUM_LABEL[s.odemeDurumu] : 'Elden/Manuel',
             'Fatura No': s.faturaNo || '',
             'Tarih': tarihStr(s.tarih),
             'Ödeme Tarihi': tarihStr(s.odemeTarihi),
@@ -276,7 +296,8 @@ export function HaftalikOdemelerClient({ faturalar, sirketler }: { faturalar: Fa
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Faturalar sekmesinde "Aldığımız Fatura" olarak girilen ve şirketi + ödeme tarihi dolu olan faturalar buraya otomatik düşer (salt okunur, düzenlemek için Faturalar sekmesini kullanın).
+        Faturalar sekmesinde "Aldığımız Fatura" olarak girilen ve şirketi dolu olan faturalar buraya otomatik düşer — ödenmiş olsun olmasın, o haftanın tüm faturaları burada görünür (salt okunur, düzenlemek için Faturalar sekmesini kullanın).
+        Her satırın Durum rengi ödeme durumunu gösterir: <span className="text-amber-700 dark:text-amber-400 font-medium">turuncu = bekliyor</span>, <span className="text-red-700 dark:text-red-400 font-medium">kırmızı = gecikti</span>, <span className="text-green-700 dark:text-green-400 font-medium">yeşil = ödendi</span>.
         Fatura kesilmeyen ödemeleri buradan elle ekleyebilirsiniz.
       </p>
 
@@ -359,21 +380,35 @@ export function HaftalikOdemelerClient({ faturalar, sirketler }: { faturalar: Fa
         gruplu.map(({ sirket, haftaListesi }) => (
           <div key={sirket.id} className="space-y-4">
             <h3 className="text-lg font-bold font-display">{sirket.ad}</h3>
-            {haftaListesi.map((hafta) => (
-              <Card key={hafta.anahtar}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">
-                    {tarihStr(hafta.baslangic.toISOString())} – {tarihStr(hafta.bitis.toISOString())} · {hafta.hafta}. HAFTA
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    {sirket.ad} ÖDEMELER {tarihStr(hafta.baslangic.toISOString())} – {tarihStr(hafta.bitis.toISOString())} ÖDEMELER
-                  </p>
+            {haftaListesi.map((hafta) => {
+              const tamamlandi = hafta.bekleyenToplam <= 0
+              const kenarRenk = hafta.gecikenSayisi > 0 ? 'border-l-4 border-l-red-500' : tamamlandi ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-amber-500'
+              return (
+              <Card key={hafta.anahtar} className={kenarRenk}>
+                <CardHeader className={`pb-2 ${hafta.gecikenSayisi > 0 ? 'bg-red-50 dark:bg-red-950/20' : tamamlandi ? 'bg-green-50 dark:bg-green-950/20' : 'bg-amber-50 dark:bg-amber-950/20'} rounded-t-lg`}>
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <CardTitle className="text-base">
+                      {tarihStr(hafta.baslangic.toISOString())} – {tarihStr(hafta.bitis.toISOString())} · {hafta.hafta}. HAFTA
+                    </CardTitle>
+                    <div className="flex items-center gap-3 text-xs font-medium">
+                      {hafta.bekleyenToplam > 0 && (
+                        <span className="text-amber-700 dark:text-amber-400">Bekleyen: {paraStr(hafta.bekleyenToplam)}</span>
+                      )}
+                      {hafta.odenenToplam > 0 && (
+                        <span className="text-green-700 dark:text-green-400">Ödenen: {paraStr(hafta.odenenToplam)}</span>
+                      )}
+                      {hafta.gecikenSayisi > 0 && (
+                        <span className="text-red-700 dark:text-red-400">{hafta.gecikenSayisi} gecikti</span>
+                      )}
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
+                          <th className="text-left font-medium px-3 py-2">Durum</th>
                           <th className="text-left font-medium px-3 py-2">Fatura No</th>
                           <th className="text-left font-medium px-3 py-2">Tarih</th>
                           <th className="text-left font-medium px-3 py-2">Ödeme Tarihi</th>
@@ -389,13 +424,20 @@ export function HaftalikOdemelerClient({ faturalar, sirketler }: { faturalar: Fa
                       <tbody>
                         {hafta.satirlar.map((s) => (
                           <tr key={s.id} className="border-b last:border-0">
+                            <td className="px-3 py-2">
+                              {s.odemeDurumu ? (
+                                <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${DURUM_RENK[s.odemeDurumu]}`}>{DURUM_LABEL[s.odemeDurumu]}</span>
+                              ) : (
+                                <span className="text-xs px-2 py-0.5 rounded-full whitespace-nowrap bg-muted text-muted-foreground">Elden/Manuel</span>
+                              )}
+                            </td>
                             <td className="px-3 py-2">{s.faturaNo || '—'}</td>
                             <td className="px-3 py-2 whitespace-nowrap">{tarihStr(s.tarih)}</td>
                             <td className="px-3 py-2 whitespace-nowrap">{tarihStr(s.odemeTarihi)}</td>
                             <td className="px-3 py-2">{s.yapilanIs}</td>
                             <td className="px-3 py-2">{s.firma || '—'}</td>
                             <td className="px-3 py-2">{s.ibanBilgisi || '—'}</td>
-                            <td className="px-3 py-2 text-right whitespace-nowrap">{paraStr(s.tutar)}</td>
+                            <td className="px-3 py-2 text-right whitespace-nowrap font-medium">{paraStr(s.tutar)}</td>
                             <td className="px-3 py-2">{sirket.ad}</td>
                             <td className="px-3 py-2">{s.yuklenici || '—'}</td>
                             <td className="px-3 py-2">
@@ -415,7 +457,7 @@ export function HaftalikOdemelerClient({ faturalar, sirketler }: { faturalar: Fa
                           </tr>
                         ))}
                         <tr className="bg-muted/40 font-semibold">
-                          <td className="px-3 py-2" colSpan={6}>GENEL TOPLAM</td>
+                          <td className="px-3 py-2" colSpan={7}>GENEL TOPLAM</td>
                           <td className="px-3 py-2 text-right whitespace-nowrap">{paraStr(hafta.toplam)}</td>
                           <td className="px-3 py-2" colSpan={3} />
                         </tr>
@@ -424,7 +466,8 @@ export function HaftalikOdemelerClient({ faturalar, sirketler }: { faturalar: Fa
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              )
+            })}
           </div>
         ))
       )}
