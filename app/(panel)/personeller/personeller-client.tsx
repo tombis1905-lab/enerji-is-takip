@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { FadeIn, Stagger, StaggerItem } from '@/components/ui/animate'
-import { Users, Plus, Trash2, Building2, History, LogOut, X, Phone, Pencil, Check, MapPin, CalendarClock, Download, HardHat } from 'lucide-react'
+import { Users, Plus, Trash2, Building2, History, LogOut, X, Phone, Pencil, Check, MapPin, CalendarClock, Download, HardHat, ChevronDown, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { SafeDate } from '@/components/safe-format'
 import * as XLSX from 'xlsx'
@@ -95,6 +95,39 @@ export function PersonellerClient() {
   const [sirketler, setSirketler] = useState<Sirket[]>([])
   const [santiyeler, setSantiyeler] = useState<Santiye[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Şirket kartları artık tıklanınca açılıp kapanıyor — hangi kartların açık
+  // olduğunu burada tutuyoruz (varsayılan: hepsi kapalı).
+  const [acikSirketler, setAcikSirketler] = useState<Set<string>>(new Set())
+  const [santiyeKaydediliyor, setSantiyeKaydediliyor] = useState<string | null>(null)
+
+  const toggleSirketAcik = (sirketId: string) => {
+    setAcikSirketler((prev) => {
+      const next = new Set(prev)
+      if (next.has(sirketId)) next.delete(sirketId)
+      else next.add(sirketId)
+      return next
+    })
+  }
+
+  // Personel satırındaki hızlı "hangi şantiyede çalışıyor" seçimi — Bölge
+  // alanını seçilen şantiyenin adına ayarlar (Çalışan Detayı'ndaki Bölge
+  // alanıyla aynı veriyi kullanır, sadece buradan tek tıkla değiştirilebiliyor).
+  const handleSantiyeSecimi = async (calisanId: string, santiyeId: string) => {
+    const santiye = santiyeler.find((s) => s.id === santiyeId)
+    setSantiyeKaydediliyor(calisanId)
+    try {
+      const res = await fetch(`/api/calisanlar/${calisanId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bolge: santiye?.ad ?? '' }),
+      })
+      if (!res.ok) { toast.error('Şantiye güncellenemedi'); return }
+      toast.success('Şantiye güncellendi')
+      loadData()
+    } catch { toast.error('Hata oluştu') }
+    finally { setSantiyeKaydediliyor(null) }
+  }
 
   // Puantaj — günlük çalışma yeri istisnaları
   const [gunlukKonumlar, setGunlukKonumlar] = useState<GunlukKonum[]>([])
@@ -484,43 +517,72 @@ export function PersonellerClient() {
         <Stagger className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" staggerDelay={0.05}>
           {sirketler.map((s) => {
             const bunlar = calisanlarFiltreli.filter((c) => c.aktifSirketId === s.id)
+            const acik = acikSirketler.has(s.id)
             return (
               <StaggerItem key={s.id}>
                 <Card className="h-full">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base flex items-center justify-between">
-                      <span className="flex items-center gap-2">
-                        <Building2 className="h-4 w-4 text-secondary" /> {s.ad}
-                      </span>
-                      <span className="text-xs font-normal text-muted-foreground">{bunlar.length} kişi</span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-1">
-                    {bunlar.length === 0 ? (
-                      <p className="text-sm text-muted-foreground py-3 text-center">Bu şirkette kimse yok</p>
-                    ) : (
-                      bunlar.map((c) => (
-                        <button
-                          key={c.id}
-                          onClick={() => openGecmis(c)}
-                          className="w-full flex items-center justify-between gap-2 rounded-md px-2 py-2 text-left hover:bg-muted/50 transition-colors"
-                        >
-                          <span className="min-w-0">
-                            <span className="font-medium truncate flex items-center gap-1.5">{c.ad} <PersonelTipiRozet tip={c.personelTipi} /></span>
-                            {c.bolge && (
-                              <span className="text-xs text-secondary flex items-center gap-1 mt-0.5">
-                                <MapPin className="h-3 w-3 shrink-0" /> {c.bolge}
-                                {tarihstenGunSayisi(c.bolgeBaslangicTarihi) !== null && (
-                                  <span className="text-muted-foreground">· {tarihstenGunSayisi(c.bolgeBaslangicTarihi)} gündür</span>
-                                )}
-                              </span>
-                            )}
-                          </span>
-                          <span className="text-xs text-muted-foreground shrink-0">{tarihStr(c.aktifSirketBaslangic)} tarihinden beri</span>
-                        </button>
-                      ))
-                    )}
-                  </CardContent>
+                  <button
+                    type="button"
+                    onClick={() => toggleSirketAcik(s.id)}
+                    className="w-full text-left"
+                  >
+                    <CardHeader className="pb-2 hover:bg-muted/40 transition-colors rounded-t-lg">
+                      <CardTitle className="text-base flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          {acik ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+                          <Building2 className="h-4 w-4 text-secondary" /> {s.ad}
+                        </span>
+                        <span className="text-xs font-normal text-muted-foreground">{bunlar.length} kişi</span>
+                      </CardTitle>
+                    </CardHeader>
+                  </button>
+                  {acik && (
+                    <CardContent className="space-y-2">
+                      {bunlar.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-3 text-center">Bu şirkette kimse yok</p>
+                      ) : (
+                        bunlar.map((c) => {
+                          const eslesenSantiye = santiyeler.find((sn) => sn.ad === c.bolge)
+                          return (
+                            <div key={c.id} className="rounded-md hover:bg-muted/50 transition-colors">
+                              <button
+                                onClick={() => openGecmis(c)}
+                                className="w-full flex items-center justify-between gap-2 px-2 py-2 text-left"
+                              >
+                                <span className="min-w-0">
+                                  <span className="font-medium truncate flex items-center gap-1.5">{c.ad} <PersonelTipiRozet tip={c.personelTipi} /></span>
+                                  {c.bolge && (
+                                    <span className="text-xs text-secondary flex items-center gap-1 mt-0.5">
+                                      <MapPin className="h-3 w-3 shrink-0" /> {c.bolge}
+                                      {tarihstenGunSayisi(c.bolgeBaslangicTarihi) !== null && (
+                                        <span className="text-muted-foreground">· {tarihstenGunSayisi(c.bolgeBaslangicTarihi)} gündür</span>
+                                      )}
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="text-xs text-muted-foreground shrink-0">{tarihStr(c.aktifSirketBaslangic)} tarihinden beri</span>
+                              </button>
+                              <div className="px-2 pb-2 flex items-center gap-1.5">
+                                <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
+                                <select
+                                  className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs"
+                                  value={eslesenSantiye?.id ?? ''}
+                                  disabled={santiyeKaydediliyor === c.id}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onChange={(e) => handleSantiyeSecimi(c.id, e.target.value)}
+                                >
+                                  <option value="">Şantiye seç…</option>
+                                  {santiyeler.map((sn) => (
+                                    <option key={sn.id} value={sn.id}>{sn.ad}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
+                    </CardContent>
+                  )}
                 </Card>
               </StaggerItem>
             )

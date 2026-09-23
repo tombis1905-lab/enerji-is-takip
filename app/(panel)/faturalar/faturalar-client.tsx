@@ -417,13 +417,25 @@ export function FaturalarClient() {
       }
       pendingPdfImportFileRef.current = dosya
       setEditId(null)
+      const karsiTaraf: string = data.karsiTaraf || ''
+      // PDF'ten okunan karşı taraf adı daha önce kayıtlı bir cariyle eşleşiyorsa
+      // (Excelden Aktar / manuel giriş akışlarındaki gibi) IBAN'ı ve cari
+      // bağlantısını da otomatik kuruyoruz.
+      const eslesen = karsiTaraf
+        ? cariler.find((c) => c.ad.toLocaleLowerCase('tr-TR') === karsiTaraf.toLocaleLowerCase('tr-TR'))
+        : undefined
       setForm({
         ...EMPTY_FORM,
         tur: 'ALINAN',
         faturaNo: data.faturaNo || '',
         tarih: data.tarih || EMPTY_FORM.tarih,
         kdvDahilTutar: data.kdvDahilTutar != null ? String(data.kdvDahilTutar) : '',
-        ibanBilgisi: data.ibanBilgisi || '',
+        ibanBilgisi: eslesen?.ibanBilgisi || data.ibanBilgisi || '',
+        karsiTaraf,
+        aciklama: data.aciklama || '',
+        sirketId: data.sirketId || '',
+        cariId: eslesen?.id || '',
+        cariEklensinMi: eslesen ? true : EMPTY_FORM.cariEklensinMi,
       })
       if (data.kdvDahilTutar != null) kdvKaynakRef.current = 'dahil'
       if (data.uyari) setPdfOkumaUyari(data.uyari)

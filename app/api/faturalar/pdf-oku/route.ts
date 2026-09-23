@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import path from 'path'
 import { auth } from '@/auth'
+import { prisma } from '@/lib/db'
 import { faturaTokenGecerliMi, FATURA_COOKIE_NAME } from '@/lib/fatura-auth'
 import { PDFParse } from 'pdf-parse'
 
@@ -76,6 +77,43 @@ function tarihTahminEt(metin: string): string | null {
   return null
 }
 
+// GİB e-Fatura/e-Arşiv şablonu her zaman aynı iskeleti kullanır: belgenin en
+// üstünde faturayı KESEN tarafın adı (satıcı), sonra "SAYIN" etiketinin hemen
+// altında faturanın KESİLDİĞİ tarafın adı (alıcı) yer alır. "Aldığımız Fatura"
+// akışında bize lazım olan karşı taraf (tedarikçi) satıcı, hangi şirketimize
+// kesildiği ise alıcı.
+function taraflarTahminEt(metin: string): { satici: string | null; alici: string | null } {
+  const satirlar = metin
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const satici = satirlar[0] || null
+  const sayinIdx = satirlar.findIndex((s) => /^SAYIN$/i.test(s))
+  const alici = sayinIdx >= 0 && satirlar[sayinIdx + 1] ? satirlar[sayinIdx + 1] : null
+  return { satici, alici }
+}
+
+// "Tevkifat Sebebi: 624-YÜK TAŞIMACILIĞI HİZMETİ" gibi bir satır varsa onu
+// açıklama olarak kullanıyoruz — Tom'un gerçek faturalarında (tevkifatlı
+// hizmet faturaları) bu satır neredeyse her zaman var ve en anlamlı özet bu.
+function aciklamaTahminEt(metin: string): string | null {
+  const m = metin.match(/tevkifat\s*sebebi\s*:?\s*([^\n]+)/i)
+  if (m) return m[1].trim()
+  return null
+}
+
+// Alıcı (SAYIN) satırında hangi şirketimizin kısa kodu (MAREL/BERKTEK/OKTAY
+// gibi) geçiyorsa o şirketi otomatik seçiyoruz. Alıcı satırı bulunamazsa tüm
+// belge metninde arıyoruz — kod isimleri yeterince ayırt edici.
+async function sirketTahminEt(metin: string, alici: string | null): Promise<{ id: string; ad: string } | null> {
+  const sirketler = await prisma.sirket.findMany({ where: { aktif: true }, select: { id: true, ad: true } })
+  const hedefMetin = (alici || metin).toLocaleUpperCase('tr-TR')
+  for (const s of sirketler) {
+    if (hedefMetin.includes(s.ad.toLocaleUpperCase('tr-TR'))) return s
+  }
+  return null
+}
+
 function tutarTahminEt(metin: string): number | null {
   // Sırasıyla en güvenilir etiketten en genele doğru dene.
   const etiketler = [
@@ -121,15 +159,22 @@ export async function POST(req: NextRequest) {
     if (!metin.trim()) {
       return NextResponse.json({
         faturaNo: null, tarih: null, kdvDahilTutar: null, ibanBilgisi: null,
+        karsiTaraf: null, aciklama: null, sirketId: null,
         uyari: 'PDF içinden metin okunamadı (muhtemelen taranmış görsel bir PDF). Alanları elle doldurmanız gerekecek.',
       })
     }
+
+    const { satici, alici } = taraflarTahminEt(metin)
+    const sirket = await sirketTahminEt(metin, alici)
 
     return NextResponse.json({
       faturaNo: faturaNoTahminEt(metin),
       tarih: tarihTahminEt(metin),
       kdvDahilTutar: tutarTahminEt(metin),
       ibanBilgisi: ibanTahminEt(metin),
+      karsiTaraf: satici,
+      aciklama: aciklamaTahminEt(metin),
+      sirketId: sirket?.id ?? null,
     })
   } catch (e: any) {
     // Tanı için sunucu loguna tam hatayı yazıyoruz; kullanıcıya kısa mesaj dönüyoruz.
