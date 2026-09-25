@@ -97,7 +97,6 @@ export function CariDurumClient() {
   const [detay, setDetay] = useState<CariSatir | null>(null)
   const [odemeler, setOdemeler] = useState<CariOdeme[]>([])
   const [faturalar, setFaturalar] = useState<CariFatura[]>([])
-  const [faturalarAcik, setFaturalarAcik] = useState(false)
   const [odemeForm, setOdemeForm] = useState({ ...EMPTY_ODEME })
   const [showOdemeForm, setShowOdemeForm] = useState(false)
   const [showYeniCari, setShowYeniCari] = useState(false)
@@ -126,7 +125,6 @@ export function CariDurumClient() {
   const handleDetay = (c: CariSatir) => {
     setDetay(c)
     setShowOdemeForm(false)
-    setFaturalarAcik(false)
     setOdemeForm({ ...EMPTY_ODEME })
     fetchOdemeler(c.id)
     fetchFaturalar(c.id)
@@ -205,6 +203,57 @@ export function CariDurumClient() {
       { alacak: 0, borc: 0 }
     )
   }, [filtreli])
+
+  // Tom'un banka/muhasebe programlarından bildiği "Cari Hesap Ekstresi"
+  // formatına benzer birleşik dökümantasyon: fatura ve ödeme/tahsilat
+  // kayıtları tek bir tabloda, tarih sırasına göre, her satırda o ana kadarki
+  // bakiyeyi gösterecek şekilde birleştirilir. Yalnızca "cariEklensinMi"
+  // işaretli faturalar bakiyeye dahil edilir — bu, /api/cariler'deki
+  // netBakiye hesabıyla birebir aynı mantık (kesilen+ödeme -
+  // alınan+tahsilat), satır satır açılmış hali.
+  const ekstre = useMemo(() => {
+    type Satir = {
+      key: string
+      tarih: string
+      fisNo: string
+      aciklama: string
+      borc: number
+      alacak: number
+      odemeId?: string
+    }
+    const satirlar: Satir[] = []
+    faturalar
+      .filter((f) => f.cariEklensinMi)
+      .forEach((f) => {
+        const kesilenMi = f.tur === 'KESILEN'
+        satirlar.push({
+          key: `f-${f.id}`,
+          tarih: f.tarih,
+          fisNo: f.faturaNo || '—',
+          aciklama: f.aciklama || (kesilenMi ? 'Kestiğimiz Fatura' : 'Aldığımız Fatura'),
+          borc: kesilenMi ? f.kdvDahilTutar : 0,
+          alacak: kesilenMi ? 0 : f.kdvDahilTutar,
+        })
+      })
+    odemeler.forEach((o) => {
+      const odemeMi = o.yon === 'ODEME'
+      satirlar.push({
+        key: `o-${o.id}`,
+        tarih: o.tarih,
+        fisNo: o.odemeSekli || '—',
+        aciklama: o.aciklama || (odemeMi ? 'Ödeme' : 'Tahsilat'),
+        borc: odemeMi ? o.tutar : 0,
+        alacak: odemeMi ? 0 : o.tutar,
+        odemeId: o.id,
+      })
+    })
+    satirlar.sort((a, b) => new Date(a.tarih).getTime() - new Date(b.tarih).getTime())
+    let bakiye = 0
+    return satirlar.map((s) => {
+      bakiye += s.borc - s.alacak
+      return { ...s, bakiye }
+    })
+  }, [faturalar, odemeler])
 
   // Tom'un eskiden elle tuttuğu "Piyasa Cari 2026" Excel şablonuna benzer bir
   // rapor üretir: bir "Özet Tablo" sayfası (S.NO / Şirket Kodu / Firma Adı /
@@ -452,47 +501,10 @@ export function CariDurumClient() {
                 </div>
 
                 <div>
-                  <button
-                    type="button"
-                    className="flex items-center justify-between w-full mb-2 rounded-lg border border-secondary/30 bg-secondary/5 hover:bg-secondary/10 transition-colors px-3 py-2.5"
-                    onClick={() => setFaturalarAcik((v) => !v)}
-                  >
-                    <span className="text-sm font-medium cursor-pointer">
-                      Faturalar ({faturalar.length} adet, toplam {paraStr(faturalar.reduce((s, f) => s + f.kdvDahilTutar, 0))})
-                    </span>
-                    <span className="text-sm font-medium text-secondary shrink-0 ml-2">{faturalarAcik ? 'Gizle ▲' : 'Göster ▼'}</span>
-                  </button>
-                  {faturalarAcik && (
-                    faturalar.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">Bu cariye ait fatura kaydı yok.</p>
-                    ) : (
-                      <div className="space-y-1.5 max-h-56 overflow-y-auto">
-                        {faturalar.map((f) => (
-                          <div key={f.id} className="flex items-center justify-between text-xs border rounded-md px-2 py-1.5">
-                            <div>
-                              <span className={f.tur === 'KESILEN' ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'}>
-                                {f.tur === 'KESILEN' ? 'Kestiğimiz' : 'Aldığımız'}
-                              </span>
-                              {' · '}{tarihStr(f.tarih)}
-                              {f.faturaNo ? ` · ${f.faturaNo}` : ''}
-                              {f.aciklama ? ` · ${f.aciklama}` : ''}
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className={f.odemeDurumu === 'ODENDI' ? 'text-muted-foreground' : ''}>{DURUM_LABEL[f.odemeDurumu]}</span>
-                              <span className="font-medium">{paraStr(f.kdvDahilTutar)}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )
-                  )}
-                </div>
-
-                <div>
                   <div className="flex items-center justify-between mb-2">
-                    <Label className="text-xs">Kısmi Ödeme / Tahsilat Geçmişi</Label>
+                    <Label className="text-xs">Cari Hesap Ekstresi</Label>
                     <Button size="sm" variant="outline" onClick={() => setShowOdemeForm((v) => !v)}>
-                      <Plus className="h-3.5 w-3.5 mr-1" /> Ekle
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Kısmi Ödeme/Tahsilat Ekle
                     </Button>
                   </div>
 
@@ -547,28 +559,60 @@ export function CariDurumClient() {
                     </form>
                   )}
 
-                  {odemeler.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">Henüz kısmi ödeme/tahsilat kaydı yok.</p>
+                  {ekstre.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Bu cariye ait fatura veya ödeme/tahsilat kaydı yok.</p>
                   ) : (
-                    <div className="space-y-1.5">
-                      {odemeler.map((o) => (
-                        <div key={o.id} className="flex items-center justify-between text-xs border rounded-md px-2 py-1.5">
-                          <div>
-                            <span className={o.yon === 'TAHSILAT' ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'}>
-                              {o.yon === 'TAHSILAT' ? 'Tahsilat' : 'Ödeme'}
-                            </span>
-                            {' · '}{tarihStr(o.tarih)}{o.odemeSekli ? ` · ${o.odemeSekli}` : ''}{o.aciklama ? ` · ${o.aciklama}` : ''}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{paraStr(o.tutar)}</span>
-                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => handleOdemeSil(o.id)}>
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
+                    <div className="border rounded-lg overflow-x-auto">
+                      <table className="w-full text-xs min-w-[480px]">
+                        <thead>
+                          <tr className="bg-muted/50 text-muted-foreground">
+                            <th className="text-left font-medium px-2 py-1.5">Tarih</th>
+                            <th className="text-left font-medium px-2 py-1.5">Fiş No</th>
+                            <th className="text-left font-medium px-2 py-1.5">Açıklama</th>
+                            <th className="text-right font-medium px-2 py-1.5">Borç</th>
+                            <th className="text-right font-medium px-2 py-1.5">Alacak</th>
+                            <th className="text-right font-medium px-2 py-1.5">Bakiye</th>
+                            <th className="px-1 py-1.5" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {ekstre.map((s) => (
+                            <tr key={s.key} className="border-t">
+                              <td className="px-2 py-1.5 whitespace-nowrap">{tarihStr(s.tarih)}</td>
+                              <td className="px-2 py-1.5 whitespace-nowrap">{s.fisNo}</td>
+                              <td className="px-2 py-1.5">{s.aciklama}</td>
+                              <td className="px-2 py-1.5 text-right whitespace-nowrap">{s.borc > 0 ? paraStr(s.borc) : ''}</td>
+                              <td className="px-2 py-1.5 text-right whitespace-nowrap">{s.alacak > 0 ? paraStr(s.alacak) : ''}</td>
+                              <td className={`px-2 py-1.5 text-right whitespace-nowrap font-medium ${s.bakiye >= 0 ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'}`}>
+                                {paraStr(Math.abs(s.bakiye))} {s.bakiye >= 0 ? '(A)' : '(B)'}
+                              </td>
+                              <td className="px-1 py-1.5">
+                                {s.odemeId && (
+                                  <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => handleOdemeSil(s.odemeId!)}>
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t bg-muted/30 font-medium">
+                            <td className="px-2 py-1.5" colSpan={3}>TOPLAM</td>
+                            <td className="px-2 py-1.5 text-right whitespace-nowrap">{paraStr(ekstre.reduce((sum, s) => sum + s.borc, 0))}</td>
+                            <td className="px-2 py-1.5 text-right whitespace-nowrap">{paraStr(ekstre.reduce((sum, s) => sum + s.alacak, 0))}</td>
+                            <td className={`px-2 py-1.5 text-right whitespace-nowrap ${(ekstre[ekstre.length - 1]?.bakiye ?? 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'}`}>
+                              {paraStr(Math.abs(ekstre[ekstre.length - 1]?.bakiye ?? 0))} {(ekstre[ekstre.length - 1]?.bakiye ?? 0) >= 0 ? '(A)' : '(B)'}
+                            </td>
+                            <td />
+                          </tr>
+                        </tfoot>
+                      </table>
                     </div>
                   )}
+                  <p className="text-[11px] text-muted-foreground mt-1.5">
+                    (A) Alacaklıyız — karşı taraf bize borçlu &nbsp;·&nbsp; (B) Borçluyuz — karşı tarafa biz borçluyuz
+                  </p>
                 </div>
               </div>
             </>

@@ -471,6 +471,33 @@ export function FaturalarClient() {
     XLSX.writeFile(wb, 'faturalar.xlsx')
   }
 
+  const [deletingAll, setDeletingAll] = useState(false)
+
+  const handleDeleteAll = async () => {
+    if (faturalar.length === 0) return
+    if (!confirm(`TÜM FATURALAR (${faturalar.length} adet) kalıcı olarak silinecek, bu işlem geri alınamaz. Devam edilsin mi?`)) return
+    const girilen = prompt('Onaylamak için "SİL" yazın:')
+    if (girilen?.trim().toLocaleUpperCase('tr-TR') !== 'SİL') {
+      alert('Silme işlemi iptal edildi.')
+      return
+    }
+    setDeletingAll(true)
+    try {
+      const res = await fetch('/api/faturalar/tumunu-sil', { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data.error || 'Silinemedi')
+        return
+      }
+      alert(`${data.silinen} fatura silindi.`)
+      fetchAll()
+    } catch {
+      alert('Hata oluştu')
+    } finally {
+      setDeletingAll(false)
+    }
+  }
+
   const handleExcelImportSec = () => {
     setImportSonuc(null)
     excelImportInputRef.current?.click()
@@ -578,6 +605,18 @@ export function FaturalarClient() {
         {faturalar.length > 0 && (
           <Button variant="outline" size="sm" onClick={handleExcelExport}>
             <Download className="h-4 w-4 mr-1" /> Excele Aktar
+          </Button>
+        )}
+        {faturalar.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={deletingAll}
+            onClick={handleDeleteAll}
+            className="text-red-600 border-red-300 hover:bg-red-50 hover:text-red-700"
+            title="Tüm faturaları kalıcı olarak sil"
+          >
+            <Trash2 className="h-4 w-4 mr-1" /> {deletingAll ? 'Siliniyor...' : 'Tümünü Sil'}
           </Button>
         )}
         <Button onClick={() => { resetForm(); setShowForm(true) }} className="bg-secondary hover:bg-secondary/90" size="sm">
