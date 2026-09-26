@@ -101,8 +101,10 @@ export function CariDurumClient() {
   const [showOdemeForm, setShowOdemeForm] = useState(false)
   const [showYeniCari, setShowYeniCari] = useState(false)
   const [cariForm, setCariForm] = useState({ ...EMPTY_CARI_FORM })
+  const [duzenlenenCariId, setDuzenlenenCariId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [ekstreExporting, setEkstreExporting] = useState(false)
 
   const fetchAll = useCallback(async () => {
     const res = await fetch('/api/cariler')
@@ -133,8 +135,10 @@ export function CariDurumClient() {
   const handleYeniCari = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    const res = await fetch('/api/cariler', {
-      method: 'POST',
+    // Düzenlenen bir cari varsa (isim/IBAN/açıklama değişikliği) güncelle,
+    // yoksa yeni cari oluştur — aynı form ikisi için de kullanılıyor.
+    const res = await fetch(duzenlenenCariId ? `/api/cariler/${duzenlenenCariId}` : '/api/cariler', {
+      method: duzenlenenCariId ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(cariForm),
     })
@@ -144,8 +148,20 @@ export function CariDurumClient() {
       return
     }
     setCariForm({ ...EMPTY_CARI_FORM })
+    setDuzenlenenCariId(null)
     setShowYeniCari(false)
     fetchAll()
+    if (detay && duzenlenenCariId === detay.id) {
+      const guncel = await res.json()
+      setDetay((d) => (d ? { ...d, ad: guncel.ad, ibanBilgisi: guncel.ibanBilgisi, aciklama: guncel.aciklama } : d))
+    }
+  }
+
+  const handleCariDuzenleAc = (c: CariSatir) => {
+    setDuzenlenenCariId(c.id)
+    setCariForm({ ad: c.ad, ibanBilgisi: c.ibanBilgisi || '', aciklama: c.aciklama || '' })
+    setError('')
+    setShowYeniCari(true)
   }
 
   const handleOdemeEkle = async (e: React.FormEvent) => {
@@ -254,6 +270,45 @@ export function CariDurumClient() {
       return { ...s, bakiye }
     })
   }, [faturalar, odemeler])
+
+  // Ekranda açık olan tek bir carinin ekstresini (yukarıdaki tablonun birebir
+  // aynısı) ayrı bir Excel dosyası olarak indirir — Tom'un tüm cariler için
+  // olan genel "Excel" raporundan farklı olarak, sadece o an baktığı carinin
+  // dökümünü tek sayfa halinde dışarı çıkarabilmesi için.
+  const handleEkstreExcelExport = (c: CariSatir) => {
+    setEkstreExporting(true)
+    try {
+      const satirlar: any[][] = [
+        [`${c.ad} — Cari Hesap Ekstresi`],
+        [],
+        ['Tarih', 'Fiş No', 'Açıklama', 'Borç', 'Alacak', 'Bakiye'],
+      ]
+      ekstre.forEach((s) => {
+        satirlar.push([
+          tarihStr(s.tarih),
+          s.fisNo,
+          s.aciklama,
+          s.borc > 0 ? s.borc : '',
+          s.alacak > 0 ? s.alacak : '',
+          `${paraStr(Math.abs(s.bakiye))} ${s.bakiye >= 0 ? '(A)' : '(B)'}`,
+        ])
+      })
+      satirlar.push([
+        'TOPLAM', '', '',
+        ekstre.reduce((sum, s) => sum + s.borc, 0),
+        ekstre.reduce((sum, s) => sum + s.alacak, 0),
+        `${paraStr(Math.abs(ekstre[ekstre.length - 1]?.bakiye ?? 0))} ${(ekstre[ekstre.length - 1]?.bakiye ?? 0) >= 0 ? '(A)' : '(B)'}`,
+      ])
+      const ws = XLSX.utils.aoa_to_sheet(satirlar)
+      ws['!cols'] = [{ wch: 12 }, { wch: 18 }, { wch: 36 }, { wch: 16 }, { wch: 16 }, { wch: 20 }]
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Ekstre')
+      const dosyaAdi = c.ad.replace(/[^\p{L}\p{N}]+/gu, '_').slice(0, 40)
+      XLSX.writeFile(wb, `${dosyaAdi}_ekstre.xlsx`)
+    } finally {
+      setEkstreExporting(false)
+    }
+  }
 
   // Tom'un eskiden elle tuttuğu "Piyasa Cari 2026" Excel şablonuna benzer bir
   // rapor üretir: bir "Özet Tablo" sayfası (S.NO / Şirket Kodu / Firma Adı /
@@ -398,7 +453,7 @@ export function CariDurumClient() {
               <Download className="h-4 w-4 mr-1" /> {exporting ? 'Hazırlanıyor...' : 'Excel'}
             </Button>
           )}
-          <Button size="sm" className="bg-secondary hover:bg-secondary/90" onClick={() => { setCariForm({ ...EMPTY_CARI_FORM }); setError(''); setShowYeniCari(true) }}>
+          <Button size="sm" className="bg-secondary hover:bg-secondary/90" onClick={() => { setCariForm({ ...EMPTY_CARI_FORM }); setDuzenlenenCariId(null); setError(''); setShowYeniCari(true) }}>
             <Plus className="h-4 w-4 mr-1" /> Yeni Cari
           </Button>
         </div>
@@ -429,7 +484,7 @@ export function CariDurumClient() {
 
       {showYeniCari && (
         <Card className="border-secondary/30">
-          <CardHeader className="pb-3"><CardTitle className="text-lg">Yeni Cari Ekle</CardTitle></CardHeader>
+          <CardHeader className="pb-3"><CardTitle className="text-lg">{duzenlenenCariId ? 'Cariyi Düzenle' : 'Yeni Cari Ekle'}</CardTitle></CardHeader>
           <CardContent>
             <form onSubmit={handleYeniCari} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -448,8 +503,8 @@ export function CariDurumClient() {
               </div>
               {error && <p className="text-destructive text-sm">{error}</p>}
               <div className="flex gap-2">
-                <Button type="submit" className="bg-secondary hover:bg-secondary/90">Ekle</Button>
-                <Button type="button" variant="outline" onClick={() => setShowYeniCari(false)}>İptal</Button>
+                <Button type="submit" className="bg-secondary hover:bg-secondary/90">{duzenlenenCariId ? 'Kaydet' : 'Ekle'}</Button>
+                <Button type="button" variant="outline" onClick={() => { setShowYeniCari(false); setDuzenlenenCariId(null) }}>İptal</Button>
               </div>
             </form>
           </CardContent>
@@ -470,9 +525,14 @@ export function CariDurumClient() {
               <CardContent className="p-4 space-y-1.5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="font-medium">{c.ad}</div>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive shrink-0" onClick={(e) => { e.stopPropagation(); handleCariSil(c) }} title="Sil">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={(e) => { e.stopPropagation(); handleCariDuzenleAc(c) }} title="Düzenle">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); handleCariSil(c) }} title="Sil">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
                 <div className="flex items-center gap-4 pt-1 text-sm">
                   <span className="text-green-600 dark:text-green-400">Alacak: {paraStr(c.alacak)}</span>
@@ -485,7 +545,7 @@ export function CariDurumClient() {
       )}
 
       <Dialog open={!!detay} onOpenChange={(open) => { if (!open) setDetay(null) }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           {detay && (
             <>
               <DialogHeader>
@@ -501,11 +561,18 @@ export function CariDurumClient() {
                 </div>
 
                 <div>
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                     <Label className="text-xs">Cari Hesap Ekstresi</Label>
-                    <Button size="sm" variant="outline" onClick={() => setShowOdemeForm((v) => !v)}>
-                      <Plus className="h-3.5 w-3.5 mr-1" /> Kısmi Ödeme/Tahsilat Ekle
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {ekstre.length > 0 && (
+                        <Button size="sm" variant="outline" disabled={ekstreExporting} onClick={() => handleEkstreExcelExport(detay)}>
+                          <Download className="h-3.5 w-3.5 mr-1" /> {ekstreExporting ? 'Hazırlanıyor...' : 'Excele Aktar'}
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" onClick={() => setShowOdemeForm((v) => !v)}>
+                        <Plus className="h-3.5 w-3.5 mr-1" /> Kısmi Ödeme/Tahsilat Ekle
+                      </Button>
+                    </div>
                   </div>
 
                   {showOdemeForm && (

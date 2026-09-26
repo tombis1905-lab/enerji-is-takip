@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   Lock, Receipt, Plus, Pencil, Trash2, Download, AlertTriangle,
-  ArrowDownCircle, ArrowUpCircle, LockKeyhole, Upload, FileText, Paperclip, FileUp, Users,
+  ArrowDownCircle, ArrowUpCircle, LockKeyhole, Upload, FileText, Paperclip, FileUp, Users, CheckCheck,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { HaftalikOdemelerClient } from './haftalik-odemeler-client'
@@ -551,6 +551,40 @@ export function FaturalarClient() {
     })
   }, [faturalar, filterTur, filterSirket, showCompleted])
 
+  const [markingAllPaid, setMarkingAllPaid] = useState(false)
+
+  // O anda ekranda filtrelenmiş görünen (Kestiğimiz/Aldığımız, şirket vb.)
+  // faturalardan henüz ödenmemiş olanları tek seferde "Ödendi" yapar — Tom
+  // bir şirketin/toplu bir kesimin ödemesini yaptığında tek tek tıklamasın
+  // diye. "Tümünü Sil" ile aynı mantıkta: önce sayıyı gösteren bir onay ister.
+  const handleTumunuOdendiYap = async () => {
+    const bekleyenler = filtreli.filter((f) => f.odemeDurumu !== 'ODENDI')
+    if (bekleyenler.length === 0) {
+      alert('Şu an ekranda görünen faturalar arasında bekleyen yok.')
+      return
+    }
+    if (!confirm(`Ekranda görünen ${bekleyenler.length} bekleyen fatura "Ödendi" olarak işaretlenecek. Devam edilsin mi?`)) return
+    setMarkingAllPaid(true)
+    try {
+      const bugun = new Date()
+      const odemeTarihi = `${bugun.getFullYear()}-${String(bugun.getMonth() + 1).padStart(2, '0')}-${String(bugun.getDate()).padStart(2, '0')}`
+      await Promise.all(
+        bekleyenler.map((f) =>
+          fetch(`/api/faturalar/${f.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ odemeDurumu: 'ODENDI', odemeTarihi }),
+          })
+        )
+      )
+      fetchAll()
+    } catch {
+      alert('Hata oluştu, bazı faturalar güncellenmemiş olabilir.')
+    } finally {
+      setMarkingAllPaid(false)
+    }
+  }
+
   const ozet = useMemo(() => {
     const bekleyenKesilen = faturalar.filter((f) => f.tur === 'KESILEN' && f.odemeDurumu !== 'ODENDI').reduce((s, f) => s + f.kdvDahilTutar, 0)
     const bekleyenAlinan = faturalar.filter((f) => f.tur === 'ALINAN' && f.odemeDurumu !== 'ODENDI').reduce((s, f) => s + f.kdvDahilTutar, 0)
@@ -605,6 +639,18 @@ export function FaturalarClient() {
         {faturalar.length > 0 && (
           <Button variant="outline" size="sm" onClick={handleExcelExport}>
             <Download className="h-4 w-4 mr-1" /> Excele Aktar
+          </Button>
+        )}
+        {filtreli.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={markingAllPaid}
+            onClick={handleTumunuOdendiYap}
+            className="text-green-600 border-green-300 hover:bg-green-50 hover:text-green-700"
+            title="Ekranda görünen bekleyen faturaların hepsini Ödendi yap"
+          >
+            <CheckCheck className="h-4 w-4 mr-1" /> {markingAllPaid ? 'İşaretleniyor...' : 'Tümünü Ödendi Yap'}
           </Button>
         )}
         {faturalar.length > 0 && (
