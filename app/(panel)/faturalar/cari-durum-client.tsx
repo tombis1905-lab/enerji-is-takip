@@ -286,17 +286,35 @@ export function CariDurumClient() {
       .filter((f) => f.cariEklensinMi)
       .forEach((f) => {
         const kesilenMi = f.tur === 'KESILEN'
+        const odendiMi = f.odemeDurumu === 'ODENDI'
         satirlar.push({
           key: `f-${f.id}`,
           tarih: f.tarih,
           // Fatura henüz ödenmediyse ödeme tarihi boş kalır — "Tarih" faturanın
           // kesildiği/geldiği tarih, "Ödeme Tarihi" fiilen ödendiği tarih.
-          odemeTarihi: f.odemeDurumu === 'ODENDI' ? f.odemeTarihi : null,
+          odemeTarihi: odendiMi ? f.odemeTarihi : null,
           fisNo: f.faturaNo || '—',
           aciklama: f.aciklama || (kesilenMi ? 'Kestiğimiz Fatura' : 'Aldığımız Fatura'),
           borc: kesilenMi ? f.kdvDahilTutar : 0,
           alacak: kesilenMi ? 0 : f.kdvDahilTutar,
         })
+        // Fatura "Ödendi" işaretlendiğinde (Faturalar sekmesinden tek tek veya
+        // "Tümünü Ödendi Yap" ile toplu) bunun karşılığı olarak otomatik bir
+        // "ödeme" satırı ekleniyor — banka ekstrelerinde olduğu gibi, borç
+        // fiilen kapandığında bakiyeden düşsün diye. Bu satır olmadan fatura
+        // "Ödendi" görünse bile ekstredeki bakiye hiç değişmiyordu, bu da
+        // "hepsini ödedim ama borçlu görünüyorum" karışıklığına yol açıyordu.
+        if (odendiMi) {
+          satirlar.push({
+            key: `f-odeme-${f.id}`,
+            tarih: f.odemeTarihi || f.tarih,
+            odemeTarihi: f.odemeTarihi,
+            fisNo: f.faturaNo || '—',
+            aciklama: `Ödendi — ${f.aciklama || (kesilenMi ? 'Kestiğimiz Fatura' : 'Aldığımız Fatura')}`,
+            borc: kesilenMi ? 0 : f.kdvDahilTutar,
+            alacak: kesilenMi ? f.kdvDahilTutar : 0,
+          })
+        }
       })
     odemeler.forEach((o) => {
       const odemeMi = o.yon === 'ODEME'
