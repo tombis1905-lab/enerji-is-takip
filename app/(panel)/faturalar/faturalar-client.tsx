@@ -593,6 +593,25 @@ export function FaturalarClient() {
     return { bekleyenKesilen, bekleyenAlinan, yaklasan, odenen }
   }, [faturalar])
 
+  // Tom'un fiilen ödediği toplam para: aldığımız (ALINAN) ve "Ödendi"
+  // işaretlenmiş faturaların toplamı — hem genel toplam hem de şirket bazında
+  // (Berktek/Marel/Oktay) ayrı ayrı. Kestiğimiz faturalar burada sayılmaz,
+  // çünkü onlar bize gelen para, bizim ödediğimiz değil.
+  const odenenSirketBazinda = useMemo(() => {
+    const harita = new Map<string, number>()
+    faturalar
+      .filter((f) => f.tur === 'ALINAN' && f.odemeDurumu === 'ODENDI')
+      .forEach((f) => {
+        const ad = f.sirket?.ad || 'Şirketsiz'
+        harita.set(ad, (harita.get(ad) || 0) + f.kdvDahilTutar)
+      })
+    const siraliSirketler = sirketler.map((s) => ({ ad: s.ad, tutar: harita.get(s.ad) || 0 }))
+    const sirketsiz = harita.get('Şirketsiz') || 0
+    if (sirketsiz > 0) siraliSirketler.push({ ad: 'Şirketsiz', tutar: sirketsiz })
+    const toplam = siraliSirketler.reduce((s, x) => s + x.tutar, 0)
+    return { liste: siraliSirketler, toplam }
+  }, [faturalar, sirketler])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -719,6 +738,23 @@ export function FaturalarClient() {
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><Receipt className="h-3.5 w-3.5" /> Ödenen</div>
           <div className="font-semibold">{ozet.odenen}</div>
         </CardContent></Card>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Card className="border-secondary/30 bg-secondary/5">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><ArrowUpCircle className="h-3.5 w-3.5" /> Toplam Ödediğim</div>
+            <div className="font-semibold">{paraStr(odenenSirketBazinda.toplam)}</div>
+          </CardContent>
+        </Card>
+        {odenenSirketBazinda.liste.map((s) => (
+          <Card key={s.ad}>
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><ArrowUpCircle className="h-3.5 w-3.5" /> {s.ad}</div>
+              <div className="font-semibold">{paraStr(s.tutar)}</div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {showForm && (

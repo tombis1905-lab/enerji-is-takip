@@ -36,6 +36,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       tur: true,
       faturaNo: true,
       tarih: true,
+      odemeTarihi: true,
       aciklama: true,
       kdvDahilTutar: true,
       odemeDurumu: true,

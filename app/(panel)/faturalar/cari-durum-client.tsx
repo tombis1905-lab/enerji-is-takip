@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Users, Download, Plus, Trash2, ArrowDownCircle, ArrowUpCircle, Pencil } from 'lucide-react'
+import { Users, Download, Plus, Trash2, ArrowDownCircle, ArrowUpCircle, Pencil, GitMerge } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 interface CariSatir {
@@ -37,6 +37,7 @@ interface CariFatura {
   tur: 'KESILEN' | 'ALINAN'
   faturaNo: string | null
   tarih: string
+  odemeTarihi: string | null
   aciklama: string | null
   kdvDahilTutar: number
   odemeDurumu: 'BEKLIYOR' | 'ODENDI' | 'GECIKTI'
@@ -105,6 +106,10 @@ export function CariDurumClient() {
   const [error, setError] = useState('')
   const [exporting, setExporting] = useState(false)
   const [ekstreExporting, setEkstreExporting] = useState(false)
+  const [showBirlestir, setShowBirlestir] = useState(false)
+  const [birlestirForm, setBirlestirForm] = useState({ kaynakId: '', hedefId: '' })
+  const [birlestirYukleniyor, setBirlestirYukleniyor] = useState(false)
+  const [birlestirHata, setBirlestirHata] = useState('')
 
   const fetchAll = useCallback(async () => {
     const res = await fetch('/api/cariler')
@@ -162,6 +167,44 @@ export function CariDurumClient() {
     setCariForm({ ad: c.ad, ibanBilgisi: c.ibanBilgisi || '', aciklama: c.aciklama || '' })
     setError('')
     setShowYeniCari(true)
+  }
+
+  // Excel'den aktarım sırasında aynı firma farklı yazımlarla ("ADIM OTO" /
+  // "ADIM OTOMOTİV" gibi) iki ayrı cariye bölünmüş olabilir. Bu form,
+  // "kaynak" cariye ait tüm fatura ve ödeme kayıtlarını "hedef" cariye taşıyıp
+  // kaynağı siler, böylece bakiye tek bir cari altında toplanır.
+  const handleBirlestir = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setBirlestirHata('')
+    if (!birlestirForm.kaynakId || !birlestirForm.hedefId) {
+      setBirlestirHata('İki cari de seçilmeli')
+      return
+    }
+    if (birlestirForm.kaynakId === birlestirForm.hedefId) {
+      setBirlestirHata('Aynı cariyi kendisiyle birleştiremezsiniz')
+      return
+    }
+    setBirlestirYukleniyor(true)
+    try {
+      const res = await fetch('/api/cariler/birlestir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(birlestirForm),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setBirlestirHata(data.error || 'Hata oluştu')
+        return
+      }
+      alert(`Birleştirildi: ${data.tasinanFatura} fatura ve ${data.tasinanOdeme} ödeme kaydı "${data.hedefAd}" cariye taşındı.`)
+      setBirlestirForm({ kaynakId: '', hedefId: '' })
+      setShowBirlestir(false)
+      fetchAll()
+    } catch {
+      setBirlestirHata('Hata oluştu')
+    } finally {
+      setBirlestirYukleniyor(false)
+    }
   }
 
   const handleOdemeEkle = async (e: React.FormEvent) => {
@@ -231,6 +274,7 @@ export function CariDurumClient() {
     type Satir = {
       key: string
       tarih: string
+      odemeTarihi: string | null
       fisNo: string
       aciklama: string
       borc: number
@@ -245,6 +289,9 @@ export function CariDurumClient() {
         satirlar.push({
           key: `f-${f.id}`,
           tarih: f.tarih,
+          // Fatura henüz ödenmediyse ödeme tarihi boş kalır — "Tarih" faturanın
+          // kesildiği/geldiği tarih, "Ödeme Tarihi" fiilen ödendiği tarih.
+          odemeTarihi: f.odemeDurumu === 'ODENDI' ? f.odemeTarihi : null,
           fisNo: f.faturaNo || '—',
           aciklama: f.aciklama || (kesilenMi ? 'Kestiğimiz Fatura' : 'Aldığımız Fatura'),
           borc: kesilenMi ? f.kdvDahilTutar : 0,
@@ -256,6 +303,9 @@ export function CariDurumClient() {
       satirlar.push({
         key: `o-${o.id}`,
         tarih: o.tarih,
+        // Kısmi ödeme/tahsilat kaydının kendisi zaten fiilen yapılmış bir
+        // ödemedir — ödeme tarihi bu kaydın tarihiyle aynı.
+        odemeTarihi: o.tarih,
         fisNo: o.odemeSekli || '—',
         aciklama: o.aciklama || (odemeMi ? 'Ödeme' : 'Tahsilat'),
         borc: odemeMi ? o.tutar : 0,
@@ -281,11 +331,12 @@ export function CariDurumClient() {
       const satirlar: any[][] = [
         [`${c.ad} — Cari Hesap Ekstresi`],
         [],
-        ['Tarih', 'Fiş No', 'Açıklama', 'Borç', 'Alacak', 'Bakiye'],
+        ['Tarih', 'Ödeme Tarihi', 'Fiş No', 'Açıklama', 'Borç', 'Alacak', 'Bakiye'],
       ]
       ekstre.forEach((s) => {
         satirlar.push([
           tarihStr(s.tarih),
+          s.odemeTarihi ? tarihStr(s.odemeTarihi) : '',
           s.fisNo,
           s.aciklama,
           s.borc > 0 ? s.borc : '',
@@ -294,13 +345,13 @@ export function CariDurumClient() {
         ])
       })
       satirlar.push([
-        'TOPLAM', '', '',
+        'TOPLAM', '', '', '',
         ekstre.reduce((sum, s) => sum + s.borc, 0),
         ekstre.reduce((sum, s) => sum + s.alacak, 0),
         `${paraStr(Math.abs(ekstre[ekstre.length - 1]?.bakiye ?? 0))} ${(ekstre[ekstre.length - 1]?.bakiye ?? 0) >= 0 ? '(A)' : '(B)'}`,
       ])
       const ws = XLSX.utils.aoa_to_sheet(satirlar)
-      ws['!cols'] = [{ wch: 12 }, { wch: 18 }, { wch: 36 }, { wch: 16 }, { wch: 16 }, { wch: 20 }]
+      ws['!cols'] = [{ wch: 12 }, { wch: 14 }, { wch: 18 }, { wch: 36 }, { wch: 16 }, { wch: 16 }, { wch: 20 }]
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Ekstre')
       const dosyaAdi = c.ad.replace(/[^\p{L}\p{N}]+/gu, '_').slice(0, 40)
@@ -453,6 +504,14 @@ export function CariDurumClient() {
               <Download className="h-4 w-4 mr-1" /> {exporting ? 'Hazırlanıyor...' : 'Excel'}
             </Button>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setBirlestirForm({ kaynakId: '', hedefId: '' }); setBirlestirHata(''); setShowBirlestir(true) }}
+            title='Aynı firmanın farklı yazımla oluşmuş iki carisini tek cari altında birleştir (ör. "ADIM OTO" + "ADIM OTOMOTİV")'
+          >
+            <GitMerge className="h-4 w-4 mr-1" /> Carileri Birleştir
+          </Button>
           <Button size="sm" className="bg-secondary hover:bg-secondary/90" onClick={() => { setCariForm({ ...EMPTY_CARI_FORM }); setDuzenlenenCariId(null); setError(''); setShowYeniCari(true) }}>
             <Plus className="h-4 w-4 mr-1" /> Yeni Cari
           </Button>
@@ -481,6 +540,55 @@ export function CariDurumClient() {
           </CardContent>
         </Card>
       </div>
+
+      {showBirlestir && (
+        <Card className="border-secondary/30">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Carileri Birleştir</CardTitle>
+            <p className="text-xs text-muted-foreground pt-1">
+              Aynı firma yanlışlıkla iki farklı isimle kaydedilmiş olabilir (ör. "ADIM OTO" ve "ADIM OTOMOTİV").
+              Aşağıda birleştirilecek carileri seçin: kaynaktaki tüm fatura ve ödeme/tahsilat kayıtları hedefe taşınır, kaynak cari silinir.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleBirlestir} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label>Bu cari silinsin (kaynak) *</Label>
+                  <select
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={birlestirForm.kaynakId}
+                    onChange={(e) => setBirlestirForm((f) => ({ ...f, kaynakId: e.target.value }))}
+                    required
+                  >
+                    <option value="">Seçin...</option>
+                    {cariler.map((c) => <option key={c.id} value={c.id}>{c.ad}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Label>Bunun altında birleşsin (hedef) *</Label>
+                  <select
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={birlestirForm.hedefId}
+                    onChange={(e) => setBirlestirForm((f) => ({ ...f, hedefId: e.target.value }))}
+                    required
+                  >
+                    <option value="">Seçin...</option>
+                    {cariler.map((c) => <option key={c.id} value={c.id}>{c.ad}</option>)}
+                  </select>
+                </div>
+              </div>
+              {birlestirHata && <p className="text-destructive text-sm">{birlestirHata}</p>}
+              <div className="flex gap-2">
+                <Button type="submit" disabled={birlestirYukleniyor} className="bg-secondary hover:bg-secondary/90">
+                  {birlestirYukleniyor ? 'Birleştiriliyor...' : 'Birleştir'}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setShowBirlestir(false)}>İptal</Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       {showYeniCari && (
         <Card className="border-secondary/30">
@@ -630,10 +738,11 @@ export function CariDurumClient() {
                     <p className="text-xs text-muted-foreground">Bu cariye ait fatura veya ödeme/tahsilat kaydı yok.</p>
                   ) : (
                     <div className="border rounded-lg overflow-x-auto">
-                      <table className="w-full text-xs min-w-[480px]">
+                      <table className="w-full text-xs min-w-[620px]">
                         <thead>
                           <tr className="bg-muted/50 text-muted-foreground">
                             <th className="text-left font-medium px-2 py-1.5">Tarih</th>
+                            <th className="text-left font-medium px-2 py-1.5">Ödeme Tarihi</th>
                             <th className="text-left font-medium px-2 py-1.5">Fiş No</th>
                             <th className="text-left font-medium px-2 py-1.5">Açıklama</th>
                             <th className="text-right font-medium px-2 py-1.5">Borç</th>
@@ -646,6 +755,7 @@ export function CariDurumClient() {
                           {ekstre.map((s) => (
                             <tr key={s.key} className="border-t">
                               <td className="px-2 py-1.5 whitespace-nowrap">{tarihStr(s.tarih)}</td>
+                              <td className="px-2 py-1.5 whitespace-nowrap text-muted-foreground">{s.odemeTarihi ? tarihStr(s.odemeTarihi) : '—'}</td>
                               <td className="px-2 py-1.5 whitespace-nowrap">{s.fisNo}</td>
                               <td className="px-2 py-1.5">{s.aciklama}</td>
                               <td className="px-2 py-1.5 text-right whitespace-nowrap">{s.borc > 0 ? paraStr(s.borc) : ''}</td>
@@ -665,7 +775,7 @@ export function CariDurumClient() {
                         </tbody>
                         <tfoot>
                           <tr className="border-t bg-muted/30 font-medium">
-                            <td className="px-2 py-1.5" colSpan={3}>TOPLAM</td>
+                            <td className="px-2 py-1.5" colSpan={4}>TOPLAM</td>
                             <td className="px-2 py-1.5 text-right whitespace-nowrap">{paraStr(ekstre.reduce((sum, s) => sum + s.borc, 0))}</td>
                             <td className="px-2 py-1.5 text-right whitespace-nowrap">{paraStr(ekstre.reduce((sum, s) => sum + s.alacak, 0))}</td>
                             <td className={`px-2 py-1.5 text-right whitespace-nowrap ${(ekstre[ekstre.length - 1]?.bakiye ?? 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'}`}>
