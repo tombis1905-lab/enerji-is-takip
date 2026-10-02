@@ -273,6 +273,7 @@ export function CariDurumClient() {
   const ekstre = useMemo(() => {
     type Satir = {
       key: string
+      islem: string
       tarih: string
       odemeTarihi: string | null
       fisNo: string
@@ -289,6 +290,7 @@ export function CariDurumClient() {
         const odendiMi = f.odemeDurumu === 'ODENDI'
         satirlar.push({
           key: `f-${f.id}`,
+          islem: 'Fatura',
           tarih: f.tarih,
           // Fatura henüz ödenmediyse ödeme tarihi boş kalır — "Tarih" faturanın
           // kesildiği/geldiği tarih, "Ödeme Tarihi" fiilen ödendiği tarih.
@@ -307,6 +309,7 @@ export function CariDurumClient() {
         if (odendiMi) {
           satirlar.push({
             key: `f-odeme-${f.id}`,
+            islem: 'Ödeme',
             tarih: f.odemeTarihi || f.tarih,
             odemeTarihi: f.odemeTarihi,
             fisNo: f.faturaNo || '—',
@@ -320,6 +323,7 @@ export function CariDurumClient() {
       const odemeMi = o.yon === 'ODEME'
       satirlar.push({
         key: `o-${o.id}`,
+        islem: odemeMi ? 'Ödeme' : 'Tahsilat',
         tarih: o.tarih,
         // Kısmi ödeme/tahsilat kaydının kendisi zaten fiilen yapılmış bir
         // ödemedir — ödeme tarihi bu kaydın tarihiyle aynı.
@@ -349,12 +353,12 @@ export function CariDurumClient() {
       const satirlar: any[][] = [
         [`${c.ad} — Cari Hesap Ekstresi`],
         [],
-        ['Tarih', 'Ödeme Tarihi', 'Fiş No', 'Açıklama', 'Borç', 'Alacak', 'Bakiye'],
+        ['Tarih', 'İşlem', 'Belge / Hesap', 'Açıklama', 'Borç (Fatura)', 'Alacak (Ödeme)', 'Bakiye'],
       ]
       ekstre.forEach((s) => {
         satirlar.push([
           tarihStr(s.tarih),
-          s.odemeTarihi ? tarihStr(s.odemeTarihi) : '',
+          s.islem,
           s.fisNo,
           s.aciklama,
           s.borc > 0 ? s.borc : '',
@@ -369,7 +373,7 @@ export function CariDurumClient() {
         `${paraStr(Math.abs(ekstre[ekstre.length - 1]?.bakiye ?? 0))} ${(ekstre[ekstre.length - 1]?.bakiye ?? 0) >= 0 ? '(A)' : '(B)'}`,
       ])
       const ws = XLSX.utils.aoa_to_sheet(satirlar)
-      ws['!cols'] = [{ wch: 12 }, { wch: 14 }, { wch: 18 }, { wch: 36 }, { wch: 16 }, { wch: 16 }, { wch: 20 }]
+      ws['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 18 }, { wch: 36 }, { wch: 16 }, { wch: 16 }, { wch: 20 }]
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Ekstre')
       const dosyaAdi = c.ad.replace(/[^\p{L}\p{N}]+/gu, '_').slice(0, 40)
@@ -760,11 +764,11 @@ export function CariDurumClient() {
                         <thead>
                           <tr className="bg-muted/50 text-muted-foreground">
                             <th className="text-left font-medium px-2 py-1.5">Tarih</th>
-                            <th className="text-left font-medium px-2 py-1.5">Ödeme Tarihi</th>
-                            <th className="text-left font-medium px-2 py-1.5">Fiş No</th>
+                            <th className="text-left font-medium px-2 py-1.5">İşlem</th>
+                            <th className="text-left font-medium px-2 py-1.5">Belge / Hesap</th>
                             <th className="text-left font-medium px-2 py-1.5">Açıklama</th>
-                            <th className="text-right font-medium px-2 py-1.5">Borç</th>
-                            <th className="text-right font-medium px-2 py-1.5">Alacak</th>
+                            <th className="text-right font-medium px-2 py-1.5">Borç (Fatura)</th>
+                            <th className="text-right font-medium px-2 py-1.5">Alacak (Ödeme)</th>
                             <th className="text-right font-medium px-2 py-1.5">Bakiye</th>
                             <th className="px-1 py-1.5" />
                           </tr>
@@ -773,7 +777,11 @@ export function CariDurumClient() {
                           {ekstre.map((s) => (
                             <tr key={s.key} className="border-t">
                               <td className="px-2 py-1.5 whitespace-nowrap">{tarihStr(s.tarih)}</td>
-                              <td className="px-2 py-1.5 whitespace-nowrap text-muted-foreground">{s.odemeTarihi ? tarihStr(s.odemeTarihi) : '—'}</td>
+                              <td className="px-2 py-1.5 whitespace-nowrap">
+                                <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-medium ${s.islem === 'Fatura' ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'}`}>
+                                  {s.islem}
+                                </span>
+                              </td>
                               <td className="px-2 py-1.5 whitespace-nowrap">{s.fisNo}</td>
                               <td className="px-2 py-1.5">{s.aciklama}</td>
                               <td className="px-2 py-1.5 text-right whitespace-nowrap">{s.borc > 0 ? paraStr(s.borc) : ''}</td>
