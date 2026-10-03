@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Users, Download, Plus, Trash2, ArrowDownCircle, ArrowUpCircle, Pencil, GitMerge } from 'lucide-react'
+import { Users, Download, Plus, Trash2, ArrowDownCircle, ArrowUpCircle, Pencil, GitMerge, Upload } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 interface CariSatir {
@@ -87,6 +87,41 @@ function tarihStr(d: string | null) {
   return new Date(d).toLocaleDateString('tr-TR')
 }
 
+// Tom'un banka hareketleriyle eşleştirerek hazırladığı "CARİ_HESAPLAR" Excel
+// raporundan (her cari kendi sayfasında, 1) bölümünde Fatura Tarihi/Tutar/
+// Durum/Ödendiği Tarih(ler) sütunlarıyla) "ne zaman ödendi" bilgisini
+// uygulamaya geri aktarmak için kullanılan satır/rapor tipleri.
+type OiaSatir = { cariAd: string; tarih: string | null; tutar: number; durum: string; sonOdemeTarihi: string | null }
+type OiaRapor = {
+  toplamSatir: number
+  guncellenen: number
+  zatenOdendi: number
+  kismenOdendi: number
+  odenmedi: number
+  cariBulunamadi: Record<string, number>
+  faturaBulunamadiSayisi: number
+  faturaBulunamadiOrnek: { cariAd: string; tarih: string | null; tutar: number }[]
+  uygulandiMi: boolean
+}
+
+// "24.04.2026 (125.800,00); 19.06.2026 (99.000,00)" gibi hücrelerden en son
+// (kronolojik olarak en geç) tarihi çıkarır — fatura o tarihte tamamen
+// kapanmış demektir.
+function sonTarihiCikar(hucre: string): string | null {
+  if (!hucre) return null
+  const eslesmeler = [...hucre.matchAll(/(\d{2})\.(\d{2})\.(\d{4})/g)]
+  if (eslesmeler.length === 0) return null
+  let enSon: Date | null = null
+  for (const m of eslesmeler) {
+    const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]))
+    if (!enSon || d > enSon) enSon = d
+  }
+  if (!enSon) return null
+  return `${enSon.getFullYear()}-${String(enSon.getMonth() + 1).padStart(2, '0')}-${String(enSon.getDate()).padStart(2, '0')}`
+}
+
+const OIA_META_SAYFALAR = new Set(['ÖZET', 'Ödeme Bulunamayanlar', 'Tekrar Eden Satırlar', 'Banka Kapsamı'])
+
 const EMPTY_ODEME = { tarih: '', tutar: '', yon: 'TAHSILAT' as 'TAHSILAT' | 'ODEME', odemeSekli: 'Nakit', aciklama: '' }
 const EMPTY_CARI_FORM = { ad: '', ibanBilgisi: '', aciklama: '' }
 
@@ -110,6 +145,13 @@ export function CariDurumClient() {
   const [birlestirForm, setBirlestirForm] = useState({ kaynakId: '', hedefId: '' })
   const [birlestirYukleniyor, setBirlestirYukleniyor] = useState(false)
   const [birlestirHata, setBirlestirHata] = useState('')
+  const [showOdemeIceAktar, setShowOdemeIceAktar] = useState(false)
+  const [oiaDosyaAdi, setOiaDosyaAdi] = useState('')
+  const [oiaSatirlar, setOiaSatirlar] = useState<OiaSatir[] | null>(null)
+  const [oiaYukleniyor, setOiaYukleniyor] = useState(false)
+  const [oiaOnizleme, setOiaOnizleme] = useState<OiaRapor | null>(null)
+  const [oiaSonuc, setOiaSonuc] = useState<OiaRapor | null>(null)
+  const [oiaHata, setOiaHata] = useState('')
 
   const fetchAll = useCallback(async () => {
     const res = await fetch('/api/cariler')
@@ -205,6 +247,92 @@ export function CariDurumClient() {
     } finally {
       setBirlestirYukleniyor(false)
     }
+  }
+
+  // Tom'un yüklediği CARİ_HESAPLAR Excel'ini okuyup her cari sayfasındaki
+  // "1) FATURALAR / ÖDEME TALEPLERİ" bölümünü satır satır çıkarır. Sunucuya
+  // sadece bu küçük özet gönderilir (ham dosya değil) — eşleştirme orada,
+  // mevcut fatura kayıtlarına karşı yapılır.
+  const handleOiaDosyaSec = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const dosya = e.target.files?.[0]
+    if (!dosya) return
+    setOiaHata('')
+    setOiaOnizleme(null)
+    setOiaSonuc(null)
+    setOiaDosyaAdi(dosya.name)
+    try {
+      const veri = await dosya.arrayBuffer()
+      const wb = XLSX.read(veri, { type: 'array', cellDates: true })
+      const satirlar: OiaSatir[] = []
+      wb.SheetNames.forEach((ad) => {
+        if (OIA_META_SAYFALAR.has(ad)) return
+        const ws = wb.Sheets[ad]
+        const aoa: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true })
+        let baslikSatiri = -1
+        for (let r = 0; r < Math.min(15, aoa.length); r++) {
+          if (aoa[r] && aoa[r][0] === 'Fatura Tarihi') { baslikSatiri = r; break }
+        }
+        if (baslikSatiri === -1) return
+        for (let r = baslikSatiri + 1; r < aoa.length; r++) {
+          const row = aoa[r]
+          if (!row || row[0] === '' || row[0] == null) break
+          const tarihHam = row[0]
+          const tarih = tarihHam instanceof Date ? tarihHam.toISOString().slice(0, 10) : null
+          const tutar = Number(row[3]) || 0
+          const durum = String(row[7] || '')
+          const sonOdemeTarihi = sonTarihiCikar(String(row[6] || ''))
+          satirlar.push({ cariAd: ad, tarih, tutar, durum, sonOdemeTarihi })
+        }
+      })
+      if (satirlar.length === 0) {
+        setOiaHata('Dosyada "Fatura Tarihi" başlıklı bir bölüm bulunamadı. Doğru dosyayı seçtiğinizden emin olun.')
+        setOiaSatirlar(null)
+        return
+      }
+      setOiaSatirlar(satirlar)
+    } catch {
+      setOiaHata('Dosya okunamadı. Geçerli bir Excel (.xls/.xlsx) dosyası seçin.')
+      setOiaSatirlar(null)
+    }
+  }
+
+  const handleOiaCalistir = async (uygula: boolean) => {
+    if (!oiaSatirlar) return
+    setOiaYukleniyor(true)
+    setOiaHata('')
+    try {
+      const res = await fetch('/api/faturalar/odeme-ice-aktar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ satirlar: oiaSatirlar, uygula }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setOiaHata(data.error || 'Hata oluştu')
+        return
+      }
+      if (uygula) {
+        setOiaSonuc(data)
+        setOiaOnizleme(null)
+        fetchAll()
+        if (detay) fetchFaturalar(detay.id)
+      } else {
+        setOiaOnizleme(data)
+      }
+    } catch {
+      setOiaHata('Hata oluştu')
+    } finally {
+      setOiaYukleniyor(false)
+    }
+  }
+
+  const handleOiaKapat = () => {
+    setShowOdemeIceAktar(false)
+    setOiaDosyaAdi('')
+    setOiaSatirlar(null)
+    setOiaOnizleme(null)
+    setOiaSonuc(null)
+    setOiaHata('')
   }
 
   const handleOdemeEkle = async (e: React.FormEvent) => {
@@ -534,6 +662,14 @@ export function CariDurumClient() {
           >
             <GitMerge className="h-4 w-4 mr-1" /> Carileri Birleştir
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { handleOiaKapat(); setShowOdemeIceAktar(true) }}
+            title="Banka hareketleriyle eşleştirilmiş Excel raporundaki 'ne zaman ödendi' bilgisini mevcut faturalara işle"
+          >
+            <Upload className="h-4 w-4 mr-1" /> Ödeme Bilgisi Aktar
+          </Button>
           <Button size="sm" className="bg-secondary hover:bg-secondary/90" onClick={() => { setCariForm({ ...EMPTY_CARI_FORM }); setDuzenlenenCariId(null); setError(''); setShowYeniCari(true) }}>
             <Plus className="h-4 w-4 mr-1" /> Yeni Cari
           </Button>
@@ -637,6 +773,67 @@ export function CariDurumClient() {
                 <Button type="button" variant="outline" onClick={() => { setShowYeniCari(false); setDuzenlenenCariId(null) }}>İptal</Button>
               </div>
             </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {showOdemeIceAktar && (
+        <Card className="border-secondary/30">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Ödeme Bilgisini Excelden Aktar</CardTitle>
+            <p className="text-xs text-muted-foreground pt-1">
+              Her cari için ayrı sayfası olan, banka hareketleriyle eşleştirilmiş raporu (CARİ_HESAPLAR gibi) seçin.
+              Sadece sayfalardaki "1) FATURALAR / ÖDEME TALEPLERİ" bölümünde <b>Durum = Ödendi</b> olan satırlar işlenir;
+              ilgili cari + tutar eşleşen ALINAN fatura bulunup "Ödendi" + ödeme tarihi otomatik işlenir.
+              "Kısmen ödendi" ve "ÖDENMEDİ" satırlarına dokunulmaz, sadece sayıları raporda gösterilir.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Input type="file" accept=".xls,.xlsx" onChange={handleOiaDosyaSec} />
+            {oiaDosyaAdi && <p className="text-xs text-muted-foreground">Seçilen dosya: {oiaDosyaAdi} {oiaSatirlar && `— ${oiaSatirlar.length} fatura satırı bulundu`}</p>}
+            {oiaHata && <p className="text-destructive text-sm">{oiaHata}</p>}
+
+            {oiaOnizleme && !oiaSonuc && (
+              <div className="rounded-lg border p-3 text-sm space-y-1.5 bg-muted/30">
+                <p className="font-medium">Önizleme (henüz hiçbir şey kaydedilmedi)</p>
+                <p>Toplam satır: {oiaOnizleme.toplamSatir}</p>
+                <p className="text-green-600 dark:text-green-400">Güncellenecek (Ödendi işaretlenecek): {oiaOnizleme.guncellenen}</p>
+                <p className="text-muted-foreground">Zaten Ödendi işaretli: {oiaOnizleme.zatenOdendi}</p>
+                <p className="text-muted-foreground">Kısmen ödenmiş (dokunulmadı): {oiaOnizleme.kismenOdendi}</p>
+                <p className="text-muted-foreground">Ödenmemiş (dokunulmadı): {oiaOnizleme.odenmedi}</p>
+                {Object.keys(oiaOnizleme.cariBulunamadi).length > 0 && (
+                  <p className="text-orange-600 dark:text-orange-400">
+                    Uygulamada bulunamayan cariler: {Object.entries(oiaOnizleme.cariBulunamadi).map(([ad, n]) => `${ad} (${n})`).join(', ')}
+                  </p>
+                )}
+                {oiaOnizleme.faturaBulunamadiSayisi > 0 && (
+                  <p className="text-orange-600 dark:text-orange-400">
+                    Tutarı eşleşen fatura bulunamayan satır sayısı: {oiaOnizleme.faturaBulunamadiSayisi}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {oiaSonuc && (
+              <div className="rounded-lg border p-3 text-sm space-y-1.5 bg-muted/30">
+                <p className="font-medium text-green-600 dark:text-green-400">Uygulandı ✓</p>
+                <p>{oiaSonuc.guncellenen} fatura "Ödendi" olarak işaretlendi ve ödeme tarihi işlendi.</p>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              {oiaSatirlar && !oiaOnizleme && !oiaSonuc && (
+                <Button type="button" disabled={oiaYukleniyor} onClick={() => handleOiaCalistir(false)}>
+                  {oiaYukleniyor ? 'Hazırlanıyor...' : 'Önizle'}
+                </Button>
+              )}
+              {oiaOnizleme && !oiaSonuc && (
+                <Button type="button" disabled={oiaYukleniyor} className="bg-secondary hover:bg-secondary/90" onClick={() => handleOiaCalistir(true)}>
+                  {oiaYukleniyor ? 'Kaydediliyor...' : `Uygula (${oiaOnizleme.guncellenen} fatura)`}
+                </Button>
+              )}
+              <Button type="button" variant="outline" onClick={handleOiaKapat}>{oiaSonuc ? 'Kapat' : 'İptal'}</Button>
+            </div>
           </CardContent>
         </Card>
       )}
