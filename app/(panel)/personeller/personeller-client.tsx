@@ -18,6 +18,7 @@ import { Users, Plus, Trash2, Building2, History, LogOut, X, Phone, Pencil, Chec
 import { toast } from 'sonner'
 import { SafeDate } from '@/components/safe-format'
 import * as XLSX from 'xlsx'
+import { DevamTakibi } from './devam-takibi'
 
 type PersonelTipi = 'ASIL' | 'TASERON'
 
@@ -631,6 +632,9 @@ export function PersonellerClient() {
           </CardContent>
         </Card>
       )}
+
+      {/* Devam takibi: asıl personel her gün otomatik "geldi" sayılır, sadece gelmeyenler işaretlenir */}
+      {!loading && calisanlar.length > 0 && <DevamTakibi calisanlar={calisanlar} />}
 
       {/* Puantaj: günlük çalışma yeri istisnaları — kim, hangi şirkette olduğu yukarıda sabit kalır;
           burada sadece "bugün/o gün normalden farklı bir şantiyede çalıştı" değişiklikleri listelenir. */}

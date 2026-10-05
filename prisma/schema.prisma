@@ -266,6 +266,26 @@ model Calisan {
   updatedAt     DateTime         @updatedAt
   sirketGecmisi PersonelSirket[]
   gunlukKonumlar CalisanGunlukKonum[]
+  devamsizliklar PersonelDevamsizlik[]
+}
+
+// Devam takibi (yoklama): ASIL personel her iş günü OTOMATİK "geldi" sayılır,
+// bu yüzden günlük kayıt tutulmaz. Yalnızca gelmediği günler (izinli, raporlu,
+// mazeretsiz) buraya tek satır olarak eklenir; satır silinirse o gün tekrar
+// "geldi" olur. Bir personel + tarih için en fazla bir kayıt olabilir.
+model PersonelDevamsizlik {
+  id        String   @id @default(cuid())
+  calisanId String
+  calisan   Calisan  @relation(fields: [calisanId], references: [id], onDelete: Cascade)
+  tarih     DateTime
+  // IZINLI | RAPORLU | GELMEDI (mazeretsiz)
+  tur       String   @default("IZINLI")
+  aciklama  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([calisanId, tarih])
+  @@index([tarih])
 }
 
 // Puantaj benzeri istisna kaydı: bir personel varsayılan bölgesinin (Calisan.bolge)
