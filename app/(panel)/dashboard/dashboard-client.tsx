@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { ClipboardList, Calendar, CalendarDays, CalendarRange, Building2, MapPin, X, ChevronDown, ChevronUp, Filter, DollarSign, Download, CheckCircle2, AlertTriangle, Activity } from 'lucide-react'
 import { FadeIn } from '@/components/ui/animate'
 import * as XLSX from 'xlsx'
+import { CekHatirlatma } from '@/components/cek-hatirlatma'
 
 interface SantiyeKirilimTur {
   ad: string
@@ -222,6 +223,8 @@ export function DashboardClient({ role }: { role: string }) {
           </p>
         </div>
       </FadeIn>
+
+      {role === 'ADMIN' && <CekHatirlatma />}
 
       {/* Sade özet şeridi */}
       <FadeIn>

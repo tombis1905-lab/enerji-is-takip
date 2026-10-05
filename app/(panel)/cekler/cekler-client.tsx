@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   Lock, FileCheck2, Plus, Pencil, Trash2, Download, AlertTriangle,
-  ArrowDownCircle, ArrowUpCircle, LockKeyhole,
+  ArrowDownCircle, ArrowUpCircle, LockKeyhole, Eye, EyeOff, Upload,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
@@ -89,6 +89,110 @@ function VadeBadge({ cek }: { cek: Cek }) {
   )
 }
 
+const GIZLI = '••••••'
+
+interface AktarimKayit {
+  tur: 'ALINAN' | 'VERILEN'
+  cekNo: string | null
+  banka: string | null
+  karsiTaraf: string | null
+  tutar: number
+  vadeTarihi: string
+  duzenlemeTarihi: string | null
+  durum: Cek['durum']
+  aciklama: string | null
+}
+
+interface AktarimOnizleme {
+  gelenSatir: number
+  gecersiz: number
+  eklenecek: number
+  atlanan: number
+  verilen: number
+  alinan: number
+  bekleyen: number
+  tamamlanan: number
+  bekleyenToplam: number
+}
+
+function xlTarih(v: unknown): string | null {
+  if (typeof v === 'number' && v > 20000 && v < 80000) {
+    const p = XLSX.SSF.parse_date_code(v)
+    if (!p) return null
+    return `${p.y}-${String(p.m).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`
+  }
+  return null
+}
+
+function xlMetin(v: unknown): string | null {
+  if (v === null || v === undefined) return null
+  const t = String(v).trim()
+  return t ? t : null
+}
+
+// "ÇEKLER LİSTESİ" Excel'i: KESİLEN sekmesi = verilen çekler, Gelen sekmesi = alınan çekler.
+// Durum tahmini: İPTAL yazanlar atlanır; vadesi geçmiş olanlar tamamlanmış (ödenmiş/tahsil
+// edilmiş) sayılır, vadesi gelecek olanlar BEKLEMEDE olur — böylece yalnızca gerçekten
+// bekleyen çekler için hatırlatma çıkar.
+function cekExceliniOku(veri: ArrayBuffer): { kayitlar: AktarimKayit[]; iptalAtlanan: number } {
+  const wb = XLSX.read(veri, { type: 'array' })
+  const d = new Date()
+  const bugun = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const kayitlar: AktarimKayit[] = []
+  let iptalAtlanan = 0
+
+  const kesilen = wb.Sheets['KESİLEN']
+  if (kesilen) {
+    const rows: unknown[][] = XLSX.utils.sheet_to_json(kesilen, { header: 1, raw: true, defval: null })
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i] || []
+      const vade = xlTarih(r[2])
+      const tutar = typeof r[7] === 'number' ? (r[7] as number) : 0
+      if (!vade) continue
+      if (xlMetin(r[8])?.toLocaleUpperCase('tr-TR') === 'İPTAL') { iptalAtlanan++; continue }
+      if (!tutar) continue
+      kayitlar.push({
+        tur: 'VERILEN',
+        cekNo: xlMetin(r[4]),
+        banka: xlMetin(r[3]),
+        karsiTaraf: xlMetin(r[5]),
+        tutar,
+        vadeTarihi: vade,
+        duzenlemeTarihi: xlTarih(r[1]),
+        durum: vade < bugun ? 'TAHSIL_EDILDI' : 'BEKLEMEDE',
+        aciklama: xlMetin(r[6]),
+      })
+    }
+  }
+
+  const gelen = wb.Sheets['Gelen']
+  if (gelen) {
+    const rows: unknown[][] = XLSX.utils.sheet_to_json(gelen, { header: 1, raw: true, defval: null })
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i] || []
+      const vade = xlTarih(r[0])
+      const tutar = typeof r[5] === 'number' ? (r[5] as number) : 0
+      if (!vade || !tutar) continue
+      const kasaya = xlMetin(r[8])
+      const aciklama = [xlMetin(r[6]), kasaya && !/TAHS/i.test(kasaya) ? `Kasaya giren: ${kasaya}` : null, xlMetin(r[9])]
+        .filter(Boolean)
+        .join(' | ')
+      kayitlar.push({
+        tur: 'ALINAN',
+        cekNo: xlMetin(r[3]),
+        banka: xlMetin(r[2]),
+        karsiTaraf: xlMetin(r[4]),
+        tutar,
+        vadeTarihi: vade,
+        duzenlemeTarihi: xlTarih(r[1]),
+        durum: vade < bugun ? (kasaya && !/TAHS/i.test(kasaya) ? 'CIRO_EDILDI' : 'TAHSIL_EDILDI') : 'BEKLEMEDE',
+        aciklama: aciklama || null,
+      })
+    }
+  }
+  return { kayitlar, iptalAtlanan }
+}
+
 function PinKilidi({ onUnlock }: { onUnlock: () => void }) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
@@ -162,6 +266,15 @@ export function CeklerClient() {
   const [filterTur, setFilterTur] = useState<'HEPSI' | 'ALINAN' | 'VERILEN'>('HEPSI')
   const [filterSirket, setFilterSirket] = useState('HEPSI')
   const [showCompleted, setShowCompleted] = useState(false)
+  // Hassas bilgiler (tutar, çek no, banka) varsayılan olarak gizli; göz simgesiyle açılır
+  const [detaylarAcik, setDetaylarAcik] = useState(false)
+  const [aktarimAcik, setAktarimAcik] = useState(false)
+  const [aktarimDosya, setAktarimDosya] = useState('')
+  const [aktarimKayitlar, setAktarimKayitlar] = useState<AktarimKayit[]>([])
+  const [aktarimIptal, setAktarimIptal] = useState(0)
+  const [aktarimOnizleme, setAktarimOnizleme] = useState<AktarimOnizleme | null>(null)
+  const [aktarimHata, setAktarimHata] = useState('')
+  const [aktarimBusy, setAktarimBusy] = useState(false)
 
   const set = (k: keyof typeof EMPTY_FORM) => (v: string) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -259,6 +372,66 @@ export function CeklerClient() {
     fetchAll()
   }
 
+  const para = (n: number) => (detaylarAcik ? paraStr(n) : GIZLI)
+
+  const aktarimiSifirla = () => {
+    setAktarimDosya('')
+    setAktarimKayitlar([])
+    setAktarimIptal(0)
+    setAktarimOnizleme(null)
+    setAktarimHata('')
+  }
+
+  const aktarimIstegi = async (kayitlar: AktarimKayit[], uygula: boolean) => {
+    const res = await fetch('/api/cekler/toplu', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kayitlar, uygula }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data?.error || 'Hata oluştu')
+    return data as AktarimOnizleme
+  }
+
+  const handleAktarimDosya = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const dosya = e.target.files?.[0]
+    if (!dosya) return
+    setAktarimHata('')
+    setAktarimOnizleme(null)
+    setAktarimDosya(dosya.name)
+    setAktarimBusy(true)
+    try {
+      const { kayitlar, iptalAtlanan } = cekExceliniOku(await dosya.arrayBuffer())
+      if (kayitlar.length === 0) {
+        setAktarimHata('Dosyada aktarılabilir çek bulunamadı. "KESİLEN" ve/veya "Gelen" sekmeleri bekleniyor.')
+        return
+      }
+      setAktarimKayitlar(kayitlar)
+      setAktarimIptal(iptalAtlanan)
+      setAktarimOnizleme(await aktarimIstegi(kayitlar, false))
+    } catch (err: any) {
+      setAktarimHata(err?.message || 'Dosya okunamadı')
+    } finally {
+      setAktarimBusy(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleAktarimUygula = async () => {
+    setAktarimBusy(true)
+    setAktarimHata('')
+    try {
+      await aktarimIstegi(aktarimKayitlar, true)
+      setAktarimAcik(false)
+      aktarimiSifirla()
+      fetchAll()
+    } catch (err: any) {
+      setAktarimHata(err?.message || 'Aktarım başarısız')
+    } finally {
+      setAktarimBusy(false)
+    }
+  }
+
   const handleExcelExport = () => {
     const rows = cekler.map((c) => ({
       'Tür': c.tur === 'ALINAN' ? 'Alınan' : 'Verilen',
@@ -319,6 +492,18 @@ export function CeklerClient() {
           <Button variant="outline" size="sm" onClick={handleLock} title="Bölümü kilitle">
             <LockKeyhole className="h-4 w-4 mr-1" /> Kilitle
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setDetaylarAcik((v) => !v)}
+            title="Tutar, çek no ve banka bilgilerini göster / gizle"
+          >
+            {detaylarAcik ? <EyeOff className="h-4 w-4 mr-1" /> : <Eye className="h-4 w-4 mr-1" />}
+            {detaylarAcik ? 'Detayları Gizle' : 'Detayları Göster'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => { aktarimiSifirla(); setAktarimAcik(true) }}>
+            <Upload className="h-4 w-4 mr-1" /> Excel'den Aktar
+          </Button>
           {cekler.length > 0 && (
             <Button variant="outline" size="sm" onClick={handleExcelExport}>
               <Download className="h-4 w-4 mr-1" /> Excel
@@ -333,11 +518,11 @@ export function CeklerClient() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card><CardContent className="p-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><ArrowDownCircle className="h-3.5 w-3.5" /> Bekleyen Alınan</div>
-          <div className="font-semibold">{paraStr(ozet.bekleyenAlinan)}</div>
+          <div className="font-semibold">{para(ozet.bekleyenAlinan)}</div>
         </CardContent></Card>
         <Card><CardContent className="p-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><ArrowUpCircle className="h-3.5 w-3.5" /> Bekleyen Verilen</div>
-          <div className="font-semibold">{paraStr(ozet.bekleyenVerilen)}</div>
+          <div className="font-semibold">{para(ozet.bekleyenVerilen)}</div>
         </CardContent></Card>
         <Card><CardContent className="p-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><AlertTriangle className="h-3.5 w-3.5" /> Yaklaşan / Geçen</div>
@@ -480,12 +665,12 @@ export function CeklerClient() {
                   <div className="flex items-center gap-1.5 text-sm font-medium">
                     {c.tur === 'ALINAN' ? <ArrowDownCircle className="h-4 w-4 text-green-600" /> : <ArrowUpCircle className="h-4 w-4 text-orange-600" />}
                     {c.tur === 'ALINAN' ? 'Alınan' : 'Verilen'}
-                    {c.cekNo && <span className="text-muted-foreground font-normal">· {c.cekNo}</span>}
+                    {c.cekNo && <span className="text-muted-foreground font-normal">· {detaylarAcik ? c.cekNo : GIZLI}</span>}
                   </div>
                   <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${DURUM_RENK[c.durum]}`}>{DURUM_LABEL[c.durum]}</span>
                 </div>
                 <div className="text-sm text-muted-foreground">{c.karsiTaraf || '—'}{c.sirket && ` · ${c.sirket.ad}`}</div>
-                <div className="font-semibold">{paraStr(c.tutar)}</div>
+                <div className="font-semibold">{para(c.tutar)}</div>
                 <VadeBadge cek={c} />
                 <div className="flex items-center justify-end gap-1 pt-1" onClick={(e) => e.stopPropagation()}>
                   <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(c)} title="Düzenle">
@@ -501,13 +686,47 @@ export function CeklerClient() {
         </div>
       )}
 
+      <Dialog open={aktarimAcik} onOpenChange={(open) => { setAktarimAcik(open); if (!open) aktarimiSifirla() }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Excel'den Çek Aktar</DialogTitle></DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              "ÇEKLER LİSTESİ" dosyasını seç. <b>KESİLEN</b> sekmesi verilen, <b>Gelen</b> sekmesi alınan çek olarak okunur; iptal edilenler atlanır.
+              Vadesi geçmiş çekler tamamlanmış, vadesi gelecek olanlar bekleyen sayılır. Aynı dosyayı tekrar yüklersen mevcut çekler eklenmez.
+            </p>
+            <Input type="file" accept=".xlsx,.xls" onChange={handleAktarimDosya} disabled={aktarimBusy} />
+            {aktarimDosya && <p className="text-xs text-muted-foreground">{aktarimDosya}</p>}
+            {aktarimHata && <p className="text-destructive">{aktarimHata}</p>}
+            {aktarimOnizleme && (
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+                <p><b>{aktarimOnizleme.eklenecek}</b> yeni çek eklenecek ({aktarimOnizleme.verilen} verilen, {aktarimOnizleme.alinan} alınan).</p>
+                <p>Bunların <b>{aktarimOnizleme.bekleyen}</b> tanesi bekleyen, {aktarimOnizleme.tamamlanan} tanesi tamamlanmış.</p>
+                {aktarimOnizleme.bekleyen > 0 && <p>Bekleyen toplam: <b>{paraStr(aktarimOnizleme.bekleyenToplam)}</b></p>}
+                {aktarimOnizleme.atlanan > 0 && <p className="text-muted-foreground">{aktarimOnizleme.atlanan} çek zaten kayıtlı, atlanacak.</p>}
+                {aktarimIptal > 0 && <p className="text-muted-foreground">{aktarimIptal} iptal edilmiş çek atlandı.</p>}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" onClick={() => { setAktarimAcik(false); aktarimiSifirla() }}>Vazgeç</Button>
+              <Button
+                onClick={handleAktarimUygula}
+                disabled={aktarimBusy || !aktarimOnizleme || aktarimOnizleme.eklenecek === 0}
+                className="bg-secondary hover:bg-secondary/90"
+              >
+                {aktarimBusy && aktarimOnizleme ? 'Aktarılıyor...' : `Aktar${aktarimOnizleme ? ` (${aktarimOnizleme.eklenecek})` : ''}`}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!detay} onOpenChange={(open) => { if (!open) setDetay(null) }}>
         <DialogContent>
           {detay && (
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  <FileCheck2 className="h-5 w-5" /> {detay.tur === 'ALINAN' ? 'Alınan Çek' : 'Verilen Çek'}{detay.cekNo ? ` · ${detay.cekNo}` : ''}
+                  <FileCheck2 className="h-5 w-5" /> {detay.tur === 'ALINAN' ? 'Alınan Çek' : 'Verilen Çek'}{detay.cekNo ? ` · ${detaylarAcik ? detay.cekNo : GIZLI}` : ''}
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-2 text-sm">
@@ -517,8 +736,8 @@ export function CeklerClient() {
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-muted-foreground">
                   <div>Karşı Taraf</div><div className="text-right text-foreground">{detay.karsiTaraf || '—'}</div>
-                  <div>Tutar</div><div className="text-right text-foreground font-medium">{paraStr(detay.tutar)}</div>
-                  <div>Banka / Şube</div><div className="text-right text-foreground">{[detay.banka, detay.sube].filter(Boolean).join(' / ') || '—'}</div>
+                  <div>Tutar</div><div className="text-right text-foreground font-medium">{para(detay.tutar)}</div>
+                  <div>Banka / Şube</div><div className="text-right text-foreground">{detaylarAcik ? ([detay.banka, detay.sube].filter(Boolean).join(' / ') || '—') : GIZLI}</div>
                   <div>Şirket</div><div className="text-right text-foreground">{detay.sirket?.ad || '—'}</div>
                   <div>Düzenleme Tarihi</div><div className="text-right text-foreground">{tarihStr(detay.duzenlemeTarihi)}</div>
                   <div>Vade Tarihi</div><div className="text-right text-foreground">{tarihStr(detay.vadeTarihi)}</div>
