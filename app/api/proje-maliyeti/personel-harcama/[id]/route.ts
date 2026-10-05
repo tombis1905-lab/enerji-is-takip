@@ -27,7 +27,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!existing) return NextResponse.json({ error: 'Kayıt bulunamadı' }, { status: 404 })
 
   const body = await req.json()
-  const { tarih, personelAdi, bolge, aciklama, tutar, santiyeId } = body
+  const { tarih, personelAdi, bolge, aciklama, tutar, santiyeId, odendi, odemeTarihi } = body
 
   if (santiyeId !== undefined && santiyeId) {
     const santiye = await prisma.santiye.findUnique({ where: { id: santiyeId } })
@@ -43,11 +43,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         ...(bolge !== undefined && { bolge: bolge?.trim() || null }),
         ...(aciklama !== undefined && { aciklama: aciklama?.trim() || null }),
         ...(tutar !== undefined && { tutar: Number(tutar) || 0 }),
-        ...(santiyeId !== undefined && santiyeId && { santiyeId }),
+        // santiyeId gönderildiyse: dolu ise o şantiye, boş ise "Genel" (şantiyesiz)
+        ...(santiyeId !== undefined && { santiyeId: santiyeId || null }),
+        ...(odendi !== undefined && {
+          odendi: !!odendi,
+          odemeTarihi: odendi && odemeTarihi ? new Date(odemeTarihi) : null,
+        }),
       },
       include: { santiye: { select: { id: true, ad: true } } },
     })
-    return NextResponse.json({ ...kayit, santiyeAdi: kayit.santiye.ad })
+    return NextResponse.json({ ...kayit, santiyeAdi: kayit.santiye?.ad ?? null })
   } catch {
     return NextResponse.json({ error: 'Kayıt bulunamadı' }, { status: 404 })
   }

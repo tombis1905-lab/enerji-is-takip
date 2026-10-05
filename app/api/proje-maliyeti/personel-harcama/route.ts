@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
   })
 
   return NextResponse.json(
-    kayitlar.map((k) => ({
+    kayitlar.map((k: any) => ({
       id: k.id,
       tarih: k.tarih,
       personelAdi: k.personelAdi,
@@ -42,7 +42,9 @@ export async function GET(req: NextRequest) {
       aciklama: k.aciklama,
       tutar: k.tutar,
       santiyeId: k.santiyeId,
-      santiyeAdi: k.santiye.ad,
+      santiyeAdi: k.santiye?.ad ?? null,
+      odendi: k.odendi,
+      odemeTarihi: k.odemeTarihi,
     })),
   )
 }
@@ -52,28 +54,34 @@ export async function POST(req: NextRequest) {
   if (!g.ok) return g.res
 
   const body = await req.json()
-  const { tarih, personelAdi, bolge, aciklama, tutar, santiyeId } = body
+  const { tarih, personelAdi, bolge, aciklama, tutar, santiyeId, odendi, odemeTarihi } = body
 
-  if (!santiyeId) return NextResponse.json({ error: 'Şantiye seçimi zorunludur' }, { status: 400 })
   if (!tarih) return NextResponse.json({ error: 'Tarih zorunludur' }, { status: 400 })
   if (!personelAdi?.trim()) return NextResponse.json({ error: 'Personel adı zorunludur' }, { status: 400 })
   if (tutar === undefined || tutar === null || tutar === '' || Number.isNaN(Number(tutar))) {
     return NextResponse.json({ error: 'Geçerli bir tutar girin' }, { status: 400 })
   }
 
-  const santiye = await prisma.santiye.findUnique({ where: { id: santiyeId } })
-  if (!santiye) return NextResponse.json({ error: 'Şantiye bulunamadı' }, { status: 404 })
+  // Şantiye opsiyonel: boş bırakılırsa "Genel" (şantiyesiz) kayıt olur.
+  let santiyeAdi: string | null = null
+  if (santiyeId) {
+    const santiye = await prisma.santiye.findUnique({ where: { id: santiyeId } })
+    if (!santiye) return NextResponse.json({ error: 'Şantiye bulunamadı' }, { status: 404 })
+    santiyeAdi = santiye.ad
+  }
 
   const kayit = await prisma.projePersonelHarcama.create({
     data: {
-      santiyeId,
+      santiyeId: santiyeId || null,
       tarih: new Date(tarih),
       personelAdi: personelAdi.trim(),
       bolge: bolge?.trim() || null,
       aciklama: aciklama?.trim() || null,
       tutar: Number(tutar),
+      odendi: !!odendi,
+      odemeTarihi: odendi && odemeTarihi ? new Date(odemeTarihi) : null,
     },
   })
 
-  return NextResponse.json({ ...kayit, santiyeAdi: santiye.ad }, { status: 201 })
+  return NextResponse.json({ ...kayit, santiyeAdi }, { status: 201 })
 }

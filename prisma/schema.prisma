@@ -529,13 +529,19 @@ model ProjeMalzeme {
 // kişi/tarih/bölge bazlı harcama kayıtları (Tom'un Excel'indeki yapı).
 model ProjePersonelHarcama {
   id          String   @id @default(cuid())
-  santiyeId   String
-  santiye     Santiye  @relation(fields: [santiyeId], references: [id], onDelete: Cascade)
+  // Opsiyonel: Excel'den toplu aktarılan veya belirli bir şantiyeye bağlanmayan
+  // ("Genel") harcamalar şantiyesiz kaydedilebilir; şantiye seçilirse tutar
+  // o şantiyenin Proje Maliyeti'ne yansır.
+  santiyeId   String?
+  santiye     Santiye? @relation(fields: [santiyeId], references: [id], onDelete: Cascade)
   tarih       DateTime
   personelAdi String
   bolge       String?
   aciklama    String?
   tutar       Float
+  // Personele geri ödeme takibi: harcama personele ödendi mi, ne zaman?
+  odendi      Boolean  @default(false)
+  odemeTarihi DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
