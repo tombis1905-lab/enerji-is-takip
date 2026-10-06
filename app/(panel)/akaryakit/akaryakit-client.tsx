@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Fuel, Plus, Trash2, Receipt, TrendingUp, Filter, X, Download } from 'lucide-react'
+import { Fuel, Plus, Trash2, Receipt, TrendingUp, Filter, X, Download, Upload } from 'lucide-react'
 import { SafeDate, SafeNumber } from '@/components/safe-format'
 import * as XLSX from 'xlsx'
 
@@ -43,6 +43,79 @@ interface Props {
 }
 
 const fmtTL = (v: number) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 2 }).format(v)
+
+// ---- Excel okuma: başlıkları otomatik tanır ----
+const trNorm = (v: any) =>
+  String(v ?? '').toLocaleLowerCase('tr-TR').replace(/[^a-z0-9ığüşöçâî]+/g, '')
+
+function tarihCevir(v: any): string | null {
+  if (v === null || v === undefined || v === '') return null
+  if (typeof v === 'number') {
+    const d = XLSX.SSF.parse_date_code(v)
+    if (!d || d.y < 2000) return null
+    return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
+  }
+  if (v instanceof Date) return v.toISOString().slice(0, 10)
+  const t = String(v).trim()
+  let m = t.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})/)
+  if (m) {
+    const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])
+    return `${y}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+  }
+  m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`
+  return null
+}
+
+function sayiCevir(v: any): number {
+  if (typeof v === 'number') return v
+  let t = String(v ?? '').replace(/[^\d,.\-]/g, '')
+  if (!t) return 0
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.')
+  const n = Number(t)
+  return isNaN(n) ? 0 : n
+}
+
+async function akaryakitExceliniOku(file: File): Promise<any[]> {
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(buf, { type: 'array', cellDates: false })
+  const out: any[] = []
+  for (const ad of wb.SheetNames) {
+    const aoa: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[ad], { header: 1, raw: true, defval: '' })
+    // Başlık satırı: ilk 15 satırda hem tarih hem tutar/plaka kelimesi geçen satır
+    let hi = -1
+    for (let i = 0; i < Math.min(15, aoa.length); i++) {
+      const h = aoa[i].map(trNorm)
+      if (h.some((x) => x.startsWith('tarih')) && h.some((x) => x.includes('tutar') || x.includes('plaka') || x.includes('toplam') || x.includes('arac'))) { hi = i; break }
+    }
+    if (hi < 0) continue
+    const h = aoa[hi].map(trNorm)
+    const bul = (...anahtar: string[]) => h.findIndex((x) => anahtar.some((a) => x.includes(a)))
+    const cTarih = bul('tarih')
+    const cPlaka = bul('plaka', 'arac')
+    const cTutar = (() => { const i = bul('tutar'); return i >= 0 ? i : bul('toplam', 'bedel') })()
+    const cFis = bul('fis', 'fiş', 'belge')
+    const cAcik = bul('aciklama', 'açıklama', 'not')
+    const cSant = bul('santiye', 'şantiye', 'proje')
+    if (cTarih < 0 || cTutar < 0) continue
+    for (let r = hi + 1; r < aoa.length; r++) {
+      const row = aoa[r]
+      const tarih = tarihCevir(row[cTarih])
+      const tutar = sayiCevir(row[cTutar])
+      if (!tarih || !(tutar > 0)) continue
+      const plaka = cPlaka >= 0 ? String(row[cPlaka] ?? '').trim() : ''
+      out.push({
+        tarih,
+        plaka: plaka || (wb.SheetNames.length > 1 ? ad : ''),
+        tutar,
+        fisNo: cFis >= 0 ? String(row[cFis] ?? '').trim() : '',
+        aciklama: cAcik >= 0 ? String(row[cAcik] ?? '').trim() : '',
+        santiye: cSant >= 0 ? String(row[cSant] ?? '').trim() : '',
+      })
+    }
+  }
+  return out
+}
 
 export function AkaryakitClient({ role }: Props) {
   const isAdmin = role === 'ADMIN'
@@ -135,6 +208,66 @@ export function AkaryakitClient({ role }: Props) {
   useEffect(() => { fetchAraclar(); fetchSantiyeler() }, [fetchAraclar, fetchSantiyeler])
   useEffect(() => { fetchKayitlar() }, [fetchKayitlar])
 
+  // Excel'den aktarım
+  const [impAcik, setImpAcik] = useState(false)
+  const [impKayitlar, setImpKayitlar] = useState<any[]>([])
+  const [impDosya, setImpDosya] = useState('')
+  const [impOnizleme, setImpOnizleme] = useState<any>(null)
+  const [impEksikArac, setImpEksikArac] = useState(false)
+  const [impIsleniyor, setImpIsleniyor] = useState(false)
+  const [impHata, setImpHata] = useState('')
+  const [impSonuc, setImpSonuc] = useState('')
+
+  const impOnizlemeIste = async (kayitlar: any[], eksik: boolean) => {
+    setImpIsleniyor(true)
+    setImpHata('')
+    try {
+      const res = await fetch('/api/akaryakit/toplu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kayitlar, uygula: false, eksikAracOlustur: eksik }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setImpHata(d.error || 'Hata'); return }
+      setImpOnizleme(d)
+    } finally {
+      setImpIsleniyor(false)
+    }
+  }
+
+  const impDosyaSec = async (file: File) => {
+    setImpHata(''); setImpSonuc(''); setImpOnizleme(null); setImpDosya(file.name)
+    try {
+      const kayitlar = await akaryakitExceliniOku(file)
+      if (kayitlar.length === 0) { setImpHata('Dosyada okunabilir satır bulunamadı. Başlıklar: Tarih, Plaka, Tutar (Fiş No, Açıklama, Şantiye opsiyonel).'); return }
+      setImpKayitlar(kayitlar)
+      await impOnizlemeIste(kayitlar, impEksikArac)
+    } catch (e: any) {
+      setImpHata('Dosya okunamadı: ' + (e?.message || ''))
+    }
+  }
+
+  const impUygula = async () => {
+    setImpIsleniyor(true)
+    setImpHata('')
+    try {
+      const res = await fetch('/api/akaryakit/toplu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kayitlar: impKayitlar, uygula: true, eksikAracOlustur: impEksikArac }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setImpHata(d.error || 'Hata'); return }
+      setImpSonuc(`${d.eklenecek} kayıt eklendi (${fmtTL(d.eklenecekToplam)}). ${d.atlanan} kayıt zaten vardı, atlandı.`)
+      setImpOnizleme(null); setImpKayitlar([])
+      setPage(1)
+      fetchAraclar()
+      fetchKayitlar()
+    } finally {
+      setImpIsleniyor(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -215,6 +348,9 @@ export function AkaryakitClient({ role }: Props) {
           <p className="text-muted-foreground text-sm">Araç yakıt fişlerini kaydedin ve takip edin</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => { setImpAcik(!impAcik); setImpSonuc('') }}>
+            <Upload className="h-4 w-4 mr-1" /> Excel'den Aktar
+          </Button>
           {kayitlar.length > 0 && (
             <Button variant="outline" size="sm" onClick={handleExcelExport}>
               <Download className="h-4 w-4 mr-1" /> Excel
@@ -274,6 +410,58 @@ export function AkaryakitClient({ role }: Props) {
                 </Button>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Excel'den aktar */}
+      {impAcik && (
+        <Card className="border-green-300 dark:border-green-900">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2"><Upload className="h-4 w-4" /> Excel'den Akaryakıt Aktar</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Excel'de şu başlıklar aranır: <b>Tarih</b>, <b>Plaka</b> (veya Araç), <b>Tutar</b>; isteğe bağlı <b>Fiş No</b>, <b>Açıklama</b>, <b>Şantiye</b>. Aynı kayıt tekrar yüklenirse çoğaltılmaz.
+            </p>
+            <input
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="text-sm"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) impDosyaSec(f); e.target.value = '' }}
+            />
+            {impDosya && <p className="text-xs text-muted-foreground">{impDosya}</p>}
+            {impHata && <p className="text-destructive text-sm">{impHata}</p>}
+            {impSonuc && <p className="text-green-700 dark:text-green-400 text-sm font-medium">{impSonuc}</p>}
+            {impOnizleme && (
+              <div className="space-y-2 text-sm">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="rounded border p-2"><div className="text-xs text-muted-foreground">Eklenecek</div><div className="font-bold">{impOnizleme.eklenecek} fiş</div><div className="text-xs">{fmtTL(impOnizleme.eklenecekToplam)}</div></div>
+                  <div className="rounded border p-2"><div className="text-xs text-muted-foreground">Zaten var (atlanır)</div><div className="font-bold">{impOnizleme.atlanan}</div></div>
+                  <div className="rounded border p-2"><div className="text-xs text-muted-foreground">Araç bulunamadı</div><div className="font-bold">{impOnizleme.aracsiz}</div></div>
+                  <div className="rounded border p-2"><div className="text-xs text-muted-foreground">Geçersiz satır</div><div className="font-bold">{impOnizleme.gecersiz}</div></div>
+                </div>
+                {impOnizleme.bulunamayanPlakalar.length > 0 && (
+                  <div className="rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2">
+                    <p className="text-xs mb-1">Sistemde olmayan plakalar: <b>{impOnizleme.bulunamayanPlakalar.join(', ')}</b></p>
+                    <label className="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={impEksikArac}
+                        onChange={(e) => { setImpEksikArac(e.target.checked); impOnizlemeIste(impKayitlar, e.target.checked) }}
+                      />
+                      Bu plakaları yeni araç olarak ekle ve fişleri aktar
+                    </label>
+                  </div>
+                )}
+                {impOnizleme.bulunamayanSantiyeler.length > 0 && (
+                  <p className="text-xs text-muted-foreground">Eşleşmeyen şantiyeler (şantiyesiz kaydedilir): {impOnizleme.bulunamayanSantiyeler.join(', ')}</p>
+                )}
+                <Button disabled={impIsleniyor || impOnizleme.eklenecek === 0} onClick={impUygula} className="bg-secondary hover:bg-secondary/90" size="sm">
+                  {impIsleniyor ? 'Aktarılıyor...' : `${impOnizleme.eklenecek} kaydı aktar`}
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
