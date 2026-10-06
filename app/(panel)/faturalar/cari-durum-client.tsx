@@ -495,37 +495,39 @@ export function CariDurumClient() {
   // aynısı) ayrı bir Excel dosyası olarak indirir — Tom'un tüm cariler için
   // olan genel "Excel" raporundan farklı olarak, sadece o an baktığı carinin
   // dökümünü tek sayfa halinde dışarı çıkarabilmesi için.
-  const handleEkstreExcelExport = (c: CariSatir) => {
+  const handleEkstreExcelExport = async (c: CariSatir) => {
     setEkstreExporting(true)
     try {
-      const satirlar: any[][] = [
-        [`${c.ad} — Cari Hesap Ekstresi`],
-        [],
-        ['Tarih', 'İşlem', 'Belge / Hesap', 'Açıklama', 'Borç (Fatura)', 'Alacak (Ödeme)', 'Bakiye'],
-      ]
-      ekstre.forEach((s) => {
-        satirlar.push([
-          tarihStr(s.tarih),
-          s.islem,
-          s.fisNo,
-          s.aciklama,
-          s.borc > 0 ? s.borc : '',
-          s.alacak > 0 ? s.alacak : '',
-          `${paraStr(Math.abs(s.bakiye))} ${s.bakiye >= 0 ? '(A)' : '(B)'}`,
-        ])
+      const X = await import('@/lib/excel-stil')
+      const wb = await X.yeniKitap()
+      const ws = X.sayfaAc(wb, 'Ekstre', [13, 11, 20, 38, 18, 18, 22])
+      X.baslikSatiri(ws, `${c.ad} — Cari Hesap Ekstresi`, 7)
+      X.bosSatir(ws)
+      X.kolonBasliklari(ws, ['Tarih', 'İşlem', 'Belge / Hesap', 'Açıklama', 'Borç (Fatura)', 'Alacak (Ödeme)', 'Bakiye'])
+      const basliklarSatiri = ws.lastRow!.number
+      ekstre.forEach((s, i) => {
+        const r = X.veriSatiri(
+          ws,
+          [tarihStr(s.tarih), s.islem, s.fisNo, s.aciklama, s.borc > 0 ? s.borc : null, s.alacak > 0 ? s.alacak : null,
+            `${paraStr(Math.abs(s.bakiye))} ${s.bakiye >= 0 ? '(A)' : '(B)'}`],
+          i,
+          { paraKolon: [4, 5], solKolon: [3], zebra: true },
+        )
+        if (s.borc > 0) X.renkliYazi(r.getCell(5), X.RENK.kirmizi)
+        if (s.alacak > 0) X.renkliYazi(r.getCell(6), X.RENK.yesil)
+        X.renkliYazi(r.getCell(7), s.bakiye >= 0 ? X.RENK.yesil : X.RENK.kirmizi)
       })
-      satirlar.push([
-        'TOPLAM', '', '', '',
-        ekstre.reduce((sum, s) => sum + s.borc, 0),
-        ekstre.reduce((sum, s) => sum + s.alacak, 0),
-        `${paraStr(Math.abs(ekstre[ekstre.length - 1]?.bakiye ?? 0))} ${(ekstre[ekstre.length - 1]?.bakiye ?? 0) >= 0 ? '(A)' : '(B)'}`,
-      ])
-      const ws = XLSX.utils.aoa_to_sheet(satirlar)
-      ws['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 18 }, { wch: 36 }, { wch: 16 }, { wch: 16 }, { wch: 20 }]
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, 'Ekstre')
+      const son = ekstre[ekstre.length - 1]?.bakiye ?? 0
+      const t = X.toplamSatiri(
+        ws,
+        ['TOPLAM', '', '', '', ekstre.reduce((a, s) => a + s.borc, 0), ekstre.reduce((a, s) => a + s.alacak, 0),
+          `${paraStr(Math.abs(son))} ${son >= 0 ? '(A)' : '(B)'}`],
+        [4, 5],
+      )
+      ws.mergeCells(t.number, 1, t.number, 4)
+      ws.views = [{ showGridLines: false, state: 'frozen', ySplit: basliklarSatiri }]
       const dosyaAdi = c.ad.replace(/[^\p{L}\p{N}]+/gu, '_').slice(0, 40)
-      XLSX.writeFile(wb, `${dosyaAdi}_ekstre.xlsx`)
+      await X.indir(wb, `${dosyaAdi}_ekstre.xlsx`)
     } finally {
       setEkstreExporting(false)
     }
@@ -549,14 +551,15 @@ export function CariDurumClient() {
       const gorunenIdler = new Set(filtreli.map((c) => c.id))
       const rapor = tumRapor.filter((c) => gorunenIdler.has(c.id))
 
-      const wb = XLSX.utils.book_new()
+      const X = await import('@/lib/excel-stil')
+      const wb = await X.yeniKitap()
 
       // --- Özet Tablo ---
-      const ozetSatirlari: any[][] = [
-        ['PİYASA CARİ DURUMU ÖZET RAPORU'],
-        [],
-        ['S.NO', 'ŞİRKET KODU', 'FİRMA ADI', 'TOPLAM BORÇ (₺)', 'TOPLAM ÖDENEN - ALACAK (₺)', 'KALAN BAKİYE (₺)', 'DURUM'],
-      ]
+      const ozet = X.sayfaAc(wb, 'Özet Tablo', [7, 13, 36, 20, 24, 20, 14])
+      X.baslikSatiri(ozet, 'PİYASA CARİ DURUMU ÖZET RAPORU', 7)
+      X.bosSatir(ozet)
+      X.kolonBasliklari(ozet, ['S.NO', 'ŞİRKET KODU', 'FİRMA ADI', 'TOPLAM BORÇ (₺)', 'TOPLAM ÖDENEN - ALACAK (₺)', 'KALAN BAKİYE (₺)', 'DURUM'])
+      const ozetBaslikNo = ozet.lastRow!.number
       let toplamBorcTarafi = 0
       let toplamAlacakTarafi = 0
       rapor.forEach((c, i) => {
@@ -566,12 +569,20 @@ export function CariDurumClient() {
         toplamBorcTarafi += borcTarafi
         toplamAlacakTarafi += alacakTarafi
         const durum = kalanBakiye < 0 ? 'BORÇLU' : kalanBakiye > 0 ? 'ALACAKLI' : ''
-        ozetSatirlari.push([i + 1, `FRM-${String(i + 1).padStart(2, '0')}`, c.ad, borcTarafi, alacakTarafi, kalanBakiye, durum])
+        const r = X.veriSatiri(ozet, [i + 1, `FRM-${String(i + 1).padStart(2, '0')}`, c.ad, borcTarafi, alacakTarafi, kalanBakiye, durum], i, { paraKolon: [3, 4, 5], solKolon: [2], zebra: true })
+        const dc = r.getCell(7)
+        if (durum === 'BORÇLU') {
+          dc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: X.RENK.kirmiziAcik } }
+          X.renkliYazi(dc, X.RENK.kirmizi)
+          X.renkliYazi(r.getCell(6), X.RENK.kirmizi)
+        } else if (durum === 'ALACAKLI') {
+          dc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: X.RENK.yesilAcik } }
+          X.renkliYazi(dc, X.RENK.yesil)
+          X.renkliYazi(r.getCell(6), X.RENK.yesil)
+        }
       })
-      ozetSatirlari.push([null, null, 'GENEL TOPLAM', toplamBorcTarafi, toplamAlacakTarafi, toplamBorcTarafi - toplamAlacakTarafi, null])
-      const ozetWs = XLSX.utils.aoa_to_sheet(ozetSatirlari)
-      ozetWs['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 32 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 12 }]
-      XLSX.utils.book_append_sheet(wb, ozetWs, 'Özet Tablo')
+      X.toplamSatiri(ozet, [null, null, 'GENEL TOPLAM', toplamBorcTarafi, toplamAlacakTarafi, toplamBorcTarafi - toplamAlacakTarafi, null], [3, 4, 5])
+      ozet.views = [{ showGridLines: false, state: 'frozen', ySplit: ozetBaslikNo }]
 
       // --- Her cari için ayrı sayfa ---
       rapor.forEach((c, i) => {
@@ -579,60 +590,62 @@ export function CariDurumClient() {
         const alacakTarafi = c.kesilenToplam + c.odemeToplam
         const kalanBakiye = borcTarafi - alacakTarafi
 
-        const satirlar: any[][] = [
-          [c.ad, null, null, null, null, null, null, '← Özet Tabloya Dön'],
-          ['TOPLAM BORÇ (KDV DAHİL)', 'TOPLAM ÖDENEN / TAHSİL EDİLEN', 'KALAN BAKİYE'],
-          [borcTarafi, alacakTarafi, kalanBakiye],
-          [],
-        ]
-
-        const faturaBolumu = (baslik: string, tur: 'ALINAN' | 'KESILEN') => {
-          const kayitlar = c.faturalar.filter((f) => f.tur === tur)
-          satirlar.push([baslik])
-          satirlar.push(['FATURA NO', 'TARİH', 'AÇIKLAMA', 'KDV HARİÇ TUTAR', 'KDV DAHİL TUTAR', 'IBAN BİLGİSİ', 'DURUM', 'ŞİRKET'])
-          let tutarToplam = 0
-          let kdvDahilToplam = 0
-          kayitlar.forEach((f) => {
-            tutarToplam += f.tutar
-            kdvDahilToplam += f.kdvDahilTutar
-            satirlar.push([
-              f.faturaNo || '',
-              tarihStr(f.tarih),
-              f.aciklama || '',
-              f.tutar,
-              f.kdvDahilTutar,
-              f.ibanBilgisi || '',
-              DURUM_LABEL[f.odemeDurumu],
-              f.sirketAd || '',
-            ])
-          })
-          if (kayitlar.length === 0) satirlar.push(['(Kayıt yok)'])
-          satirlar.push(['GENEL TOPLAM', '', '', tutarToplam, kdvDahilToplam, '', '', ''])
-          satirlar.push([])
-        }
-
-        faturaBolumu('BORÇ KAYITLARI (ALDIĞIMIZ FATURALAR)', 'ALINAN')
-        faturaBolumu('ALACAK KAYITLARI (KESTİĞİMİZ FATURALAR)', 'KESILEN')
-
-        satirlar.push(['ÖDEME / TAHSİLAT KAYITLARI'])
-        satirlar.push(['TARİH', 'YÖN', 'AÇIKLAMA', 'ÖDEME ŞEKLİ', 'TUTAR'])
-        let odemeToplam = 0
-        c.odemeler.forEach((o) => {
-          odemeToplam += o.tutar
-          satirlar.push([tarihStr(o.tarih), o.yon === 'TAHSILAT' ? 'Tahsilat' : 'Ödeme', o.aciklama || '', o.odemeSekli || '', o.tutar])
-        })
-        if (c.odemeler.length === 0) satirlar.push(['(Kayıt yok)'])
-        satirlar.push(['GENEL TOPLAM', '', '', '', odemeToplam])
-
-        const ws = XLSX.utils.aoa_to_sheet(satirlar)
-        ws['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 32 }, { wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 12 }, { wch: 14 }]
         // Sayfa adı Excel kısıtı (max 31 karakter, bazı özel karakterler yasak)
         // yüzünden özgün firma adı yerine kısa bir kod kullanılır — firma adı
         // sayfanın ilk satırında ve Özet Tablo'da zaten görünüyor.
-        XLSX.utils.book_append_sheet(wb, ws, `Firma_${i + 1}`)
+        const ws = X.sayfaAc(wb, `Firma_${i + 1}`, [18, 15, 36, 18, 18, 26, 14, 16])
+        X.baslikSatiri(ws, c.ad, 8)
+        X.bosSatir(ws)
+        X.kolonBasliklari(ws, ['TOPLAM BORÇ (KDV DAHİL)', 'TOPLAM ÖDENEN / TAHSİL EDİLEN', 'KALAN BAKİYE'])
+        const ozetR = X.veriSatiri(ws, [borcTarafi, alacakTarafi, kalanBakiye], 0, { paraKolon: [0, 1, 2] })
+        ozetR.height = 24
+        ozetR.eachCell((cell) => { cell.font = { name: 'Calibri', size: 12, bold: true, color: { argb: 'FF000000' } } })
+        X.renkliYazi(ozetR.getCell(3), kalanBakiye < 0 ? X.RENK.kirmizi : X.RENK.yesil)
+        X.bosSatir(ws)
+
+        const faturaBolumu = (baslik: string, tur: 'ALINAN' | 'KESILEN', dolgu: string) => {
+          const kayitlar = c.faturalar.filter((f) => f.tur === tur)
+          X.bolumSatiri(ws, baslik, 8, dolgu)
+          X.kolonBasliklari(ws, ['FATURA NO', 'TARİH', 'AÇIKLAMA', 'KDV HARİÇ TUTAR', 'KDV DAHİL TUTAR', 'IBAN BİLGİSİ', 'DURUM', 'ŞİRKET'])
+          let tutarToplam = 0
+          let kdvDahilToplam = 0
+          kayitlar.forEach((f, k) => {
+            tutarToplam += f.tutar
+            kdvDahilToplam += f.kdvDahilTutar
+            const r = X.veriSatiri(
+              ws,
+              [f.faturaNo || '', tarihStr(f.tarih), f.aciklama || '', f.tutar, f.kdvDahilTutar, f.ibanBilgisi || '', DURUM_LABEL[f.odemeDurumu], f.sirketAd || ''],
+              k,
+              { paraKolon: [3, 4], solKolon: [2, 5], zebra: true },
+            )
+            X.renkliYazi(r.getCell(7), f.odemeDurumu === 'ODENDI' ? X.RENK.yesil : f.odemeDurumu === 'GECIKTI' ? X.RENK.kirmizi : 'FFB45F06')
+          })
+          if (kayitlar.length === 0) {
+            const r = X.veriSatiri(ws, ['(Kayıt yok)', '', '', '', '', '', '', ''], 0)
+            ws.mergeCells(r.number, 1, r.number, 8)
+          }
+          X.toplamSatiri(ws, ['GENEL TOPLAM', '', '', tutarToplam, kdvDahilToplam, '', '', ''], [3, 4])
+          X.bosSatir(ws)
+        }
+
+        faturaBolumu('BORÇ KAYITLARI (ALDIĞIMIZ FATURALAR)', 'ALINAN', 'FFFCE4D6')
+        faturaBolumu('ALACAK KAYITLARI (KESTİĞİMİZ FATURALAR)', 'KESILEN', 'FFE2F0D9')
+
+        X.bolumSatiri(ws, 'ÖDEME / TAHSİLAT KAYITLARI', 8, 'FFFFF2CC')
+        X.kolonBasliklari(ws, ['TARİH', 'YÖN', 'AÇIKLAMA', 'ÖDEME ŞEKLİ', 'TUTAR'])
+        let odemeToplam = 0
+        c.odemeler.forEach((o, k) => {
+          odemeToplam += o.tutar
+          X.veriSatiri(ws, [tarihStr(o.tarih), o.yon === 'TAHSILAT' ? 'Tahsilat' : 'Ödeme', o.aciklama || '', o.odemeSekli || '', o.tutar], k, { paraKolon: [4], solKolon: [2], zebra: true })
+        })
+        if (c.odemeler.length === 0) {
+          const r = X.veriSatiri(ws, ['(Kayıt yok)', '', '', '', ''], 0)
+          ws.mergeCells(r.number, 1, r.number, 5)
+        }
+        X.toplamSatiri(ws, ['GENEL TOPLAM', '', '', '', odemeToplam], [4])
       })
 
-      XLSX.writeFile(wb, 'piyasa_cari_2026.xlsx')
+      await X.indir(wb, 'piyasa_cari_2026.xlsx')
     } finally {
       setExporting(false)
     }
