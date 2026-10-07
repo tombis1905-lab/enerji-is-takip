@@ -94,10 +94,9 @@ export function DevamTakibi({ calisanlar }: { calisanlar: PersonelOzet[] }) {
     return m
   }, [kayitlar])
 
-  // Bir gün "sayılan iş günü" mü: Pazar hariç, bugüne kadar, personelin işe başlama tarihinden sonra
+  // Bir gün "sayılan iş günü" mü: bugüne kadar (Pazar dahil), personelin işe başlama tarihinden sonra
   const sayilirMi = (c: PersonelOzet, d: number) => {
     const t = tarihStr(yil, ay, d)
-    if (haftaninGunu(yil, ay, d) === 0) return false
     if (t > bugunStr) return false
     if (c.aktifSirketBaslangic && t < c.aktifSirketBaslangic.slice(0, 10)) return false
     return true
@@ -125,7 +124,6 @@ export function DevamTakibi({ calisanlar }: { calisanlar: PersonelOzet[] }) {
   const sonrakiAy = () => { if (ay === 12) { setYil(yil + 1); setAy(1) } else setAy(ay + 1) }
 
   const hucreyeTikla = (c: PersonelOzet, d: number) => {
-    if (haftaninGunu(yil, ay, d) === 0) return
     const t = tarihStr(yil, ay, d)
     const mevcut = kayitHaritasi.get(`${c.id}|${t}`)
     setTur(mevcut?.tur ?? 'IZINLI')
@@ -173,7 +171,6 @@ export function DevamTakibi({ calisanlar }: { calisanlar: PersonelOzet[] }) {
       return [
         c.ad,
         ...gunler.map((d) => {
-          if (haftaninGunu(yil, ay, d) === 0) return 'Tatil'
           if (!sayilirMi(c, d)) return ''
           const k = kayitHaritasi.get(`${c.id}|${tarihStr(yil, ay, d)}`)
           return k ? TUR_BILGI[k.tur].etiket : 'Geldi'
@@ -220,7 +217,7 @@ export function DevamTakibi({ calisanlar }: { calisanlar: PersonelOzet[] }) {
             </div>
           </div>
           <p className="text-xs text-muted-foreground pt-1">
-            Herkes her iş günü otomatik <b>geldi</b> sayılır (Pazar tatil). Gelmeyen olursa o günün kutusuna tıkla ve durumunu seç;
+            Herkes her iş günü otomatik <b>geldi</b> sayılır (Pazar günleri de çalışma günüdür). Gelmeyen olursa o günün kutusuna tıkla ve durumunu seç;
             hiçbir şey girmen gerekmez.
           </p>
         </CardHeader>
@@ -238,7 +235,7 @@ export function DevamTakibi({ calisanlar }: { calisanlar: PersonelOzet[] }) {
                         const g = haftaninGunu(yil, ay, d)
                         const bugunMu = tarihStr(yil, ay, d) === bugunStr
                         return (
-                          <th key={d} className={`px-0 py-1 text-center font-normal min-w-[1.9rem] ${g === 0 ? 'bg-muted/70' : ''} ${bugunMu ? 'text-foreground font-semibold' : ''}`}>
+                          <th key={d} className={`px-0 py-1 text-center font-normal min-w-[1.9rem] ${g === 0 ? 'bg-muted/40' : ''} ${bugunMu ? 'text-foreground font-semibold' : ''}`}>
                             <div className="text-[11px]">{d}</div>
                             <div className="text-[9px] opacity-70">{GUN_KISA[g]}</div>
                           </th>
@@ -258,7 +255,6 @@ export function DevamTakibi({ calisanlar }: { calisanlar: PersonelOzet[] }) {
                           <td className="py-1 px-3 sticky left-0 z-10 bg-background font-medium whitespace-nowrap">{c.ad}</td>
                           {gunler.map((d) => {
                             const g = haftaninGunu(yil, ay, d)
-                            if (g === 0) return <td key={d} className="bg-muted/50 text-center text-[10px] text-muted-foreground">·</td>
                             const t = tarihStr(yil, ay, d)
                             const k = kayitHaritasi.get(`${c.id}|${t}`)
                             const sayilan = sayilirMi(c, d)

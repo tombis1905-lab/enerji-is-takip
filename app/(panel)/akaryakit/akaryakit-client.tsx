@@ -86,14 +86,15 @@ async function akaryakitExceliniOku(file: File): Promise<any[]> {
     let hi = -1
     for (let i = 0; i < Math.min(15, aoa.length); i++) {
       const h = aoa[i].map(trNorm)
-      if (h.some((x) => x.startsWith('tarih')) && h.some((x) => x.includes('tutar') || x.includes('plaka') || x.includes('toplam') || x.includes('arac'))) { hi = i; break }
+      if (h.some((x) => x.startsWith('tarih')) && h.some((x) => x.includes('tutar') || x.includes('plaka') || x.includes('toplam') || x.includes('arac') || x.includes('borç'))) { hi = i; break }
     }
     if (hi < 0) continue
     const h = aoa[hi].map(trNorm)
     const bul = (...anahtar: string[]) => h.findIndex((x) => anahtar.some((a) => x.includes(a)))
     const cTarih = bul('tarih')
     const cPlaka = bul('plaka', 'arac')
-    const cTutar = (() => { const i = bul('tutar'); return i >= 0 ? i : bul('toplam', 'bedel') })()
+    const cTutar = (() => { const i = bul('tutar'); return i >= 0 ? i : (() => { const j = bul('toplam', 'bedel'); return j >= 0 ? j : bul('borç', 'borc') })() })()
+    const cTur = bul('tür', 'tur')
     const cFis = bul('fis', 'fiş', 'belge')
     const cAcik = bul('aciklama', 'açıklama', 'not')
     const cSant = bul('santiye', 'şantiye', 'proje')
@@ -103,13 +104,24 @@ async function akaryakitExceliniOku(file: File): Promise<any[]> {
       const tarih = tarihCevir(row[cTarih])
       const tutar = sayiCevir(row[cTutar])
       if (!tarih || !(tutar > 0)) continue
-      const plaka = cPlaka >= 0 ? String(row[cPlaka] ?? '').trim() : ''
+      // Veresiye ekstresi: tahsilat/devir satırları fiş değildir
+      const tur = cTur >= 0 ? trNorm(row[cTur]) : ''
+      if (tur.includes('tahsilat')) continue
+      let plaka = cPlaka >= 0 ? String(row[cPlaka] ?? '').trim() : ''
+      let fisNo = cFis >= 0 ? String(row[cFis] ?? '').trim() : ''
+      let aciklama = cAcik >= 0 ? String(row[cAcik] ?? '').trim() : ''
+      if (/devir|devreden/i.test(aciklama.toLocaleLowerCase('tr-TR'))) continue
+      // Plaka/fiş sütunu yoksa açıklamadan ayıkla: "55904 46 ANE 381" → fiş 55904
+      if (cPlaka < 0 && cFis < 0) {
+        const m = aciklama.match(/^(\d{3,})\s+(.+)$/)
+        if (m) { fisNo = m[1]; aciklama = m[2].trim() }
+      }
       out.push({
         tarih,
-        plaka: plaka || (wb.SheetNames.length > 1 ? ad : ''),
+        plaka: plaka || (cPlaka < 0 && wb.SheetNames.length > 1 ? ad : ''),
         tutar,
-        fisNo: cFis >= 0 ? String(row[cFis] ?? '').trim() : '',
-        aciklama: cAcik >= 0 ? String(row[cAcik] ?? '').trim() : '',
+        fisNo,
+        aciklama,
         santiye: cSant >= 0 ? String(row[cSant] ?? '').trim() : '',
       })
     }
@@ -422,7 +434,7 @@ export function AkaryakitClient({ role }: Props) {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-xs text-muted-foreground">
-              Excel'de şu başlıklar aranır: <b>Tarih</b>, <b>Plaka</b> (veya Araç), <b>Tutar</b>; isteğe bağlı <b>Fiş No</b>, <b>Açıklama</b>, <b>Şantiye</b>. Aynı kayıt tekrar yüklenirse çoğaltılmaz.
+              Excel'de şu başlıklar aranır: <b>Tarih</b>, <b>Plaka</b> (veya Araç), <b>Tutar</b> (veya Borç; Plaka yoksa Açıklamadan okunur, tahsilat/devir satırları atlanır); isteğe bağlı <b>Fiş No</b>, <b>Açıklama</b>, <b>Şantiye</b>. Aynı kayıt tekrar yüklenirse çoğaltılmaz.
             </p>
             <input
               type="file"
@@ -438,19 +450,19 @@ export function AkaryakitClient({ role }: Props) {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <div className="rounded border p-2"><div className="text-xs text-muted-foreground">Eklenecek</div><div className="font-bold">{impOnizleme.eklenecek} fiş</div><div className="text-xs">{fmtTL(impOnizleme.eklenecekToplam)}</div></div>
                   <div className="rounded border p-2"><div className="text-xs text-muted-foreground">Zaten var (atlanır)</div><div className="font-bold">{impOnizleme.atlanan}</div></div>
-                  <div className="rounded border p-2"><div className="text-xs text-muted-foreground">Araç bulunamadı</div><div className="font-bold">{impOnizleme.aracsiz}</div></div>
+                  <div className="rounded border p-2"><div className="text-xs text-muted-foreground">Misafir Araç'a gidecek</div><div className="font-bold">{impOnizleme.misafir ?? 0}</div></div>
                   <div className="rounded border p-2"><div className="text-xs text-muted-foreground">Geçersiz satır</div><div className="font-bold">{impOnizleme.gecersiz}</div></div>
                 </div>
                 {impOnizleme.bulunamayanPlakalar.length > 0 && (
                   <div className="rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2">
-                    <p className="text-xs mb-1">Sistemde olmayan plakalar: <b>{impOnizleme.bulunamayanPlakalar.join(', ')}</b></p>
+                    <p className="text-xs mb-1">Sistemde kayıtlı olmayan plakalar (şimdilik Misafir Araç'a yazılır): <b>{impOnizleme.bulunamayanPlakalar.join(', ')}</b></p>
                     <label className="flex items-center gap-2 text-xs">
                       <input
                         type="checkbox"
                         checked={impEksikArac}
                         onChange={(e) => { setImpEksikArac(e.target.checked); impOnizlemeIste(impKayitlar, e.target.checked) }}
                       />
-                      Bu plakaları yeni araç olarak ekle ve fişleri aktar
+                      Bu plakaları yeni araç olarak ekle ve fişleri onlara yaz
                     </label>
                   </div>
                 )}
