@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Fuel, Plus, Trash2, Receipt, TrendingUp, Filter, X, Download, Upload } from 'lucide-react'
+import { Fuel, Plus, Trash2, Pencil, Receipt, TrendingUp, Filter, X, Download, Upload } from 'lucide-react'
 import { SafeDate, SafeNumber } from '@/components/safe-format'
 import * as XLSX from 'xlsx'
 
@@ -30,6 +30,9 @@ interface AkaryakitKayit {
   arac: { plaka: string; isim: string | null; marka: string | null; model: string | null }
   user: { name: string }
   santiye: { id: string; ad: string } | null
+  aracId?: string
+  santiyeId?: string | null
+  kaynakIsKaydiId?: string | null
 }
 
 interface AracOzet {
@@ -220,6 +223,9 @@ export function AkaryakitClient({ role }: Props) {
   useEffect(() => { fetchAraclar(); fetchSantiyeler() }, [fetchAraclar, fetchSantiyeler])
   useEffect(() => { fetchKayitlar() }, [fetchKayitlar])
 
+  // Düzenleme: dolu ise form 'Fişi Düzenle' modunda çalışır
+  const [editId, setEditId] = useState<string | null>(null)
+
   // Excel'den aktarım
   const [impAcik, setImpAcik] = useState(false)
   const [impKayitlar, setImpKayitlar] = useState<any[]>([])
@@ -288,8 +294,8 @@ export function AkaryakitClient({ role }: Props) {
     setSaving(true)
 
     try {
-      const res = await fetch('/api/akaryakit', {
-        method: 'POST',
+      const res = await fetch(editId ? `/api/akaryakit/${editId}` : '/api/akaryakit', {
+        method: editId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
@@ -301,13 +307,29 @@ export function AkaryakitClient({ role }: Props) {
         setError(data.error || 'Hata oluştu')
         return
       }
-      setForm({ tarih: new Date().toISOString().slice(0, 10), tutar: '', fisNo: '', aciklama: '', aracId: form.aracId, santiyeId: form.santiyeId })
+      setForm({ tarih: new Date().toISOString().slice(0, 10), tutar: '', fisNo: '', aciklama: '', aracId: editId ? '' : form.aracId, santiyeId: editId ? '' : form.santiyeId })
+      setEditId(null)
       setShowForm(false)
       setPage(1)
       fetchKayitlar()
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleEdit = (k: AkaryakitKayit) => {
+    setEditId(k.id)
+    setForm({
+      tarih: String(k.tarih).slice(0, 10),
+      tutar: String(k.tutar),
+      fisNo: k.fisNo || '',
+      aciklama: k.aciklama || '',
+      aracId: k.aracId || '',
+      santiyeId: k.santiyeId || k.santiye?.id || '',
+    })
+    setError('')
+    setShowForm(true)
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const handleDelete = async (id: string) => {
@@ -371,7 +393,7 @@ export function AkaryakitClient({ role }: Props) {
           <Button variant="outline" size="sm" onClick={() => setShowFilter(!showFilter)}>
             <Filter className="h-4 w-4 mr-1" /> Filtre
           </Button>
-          <Button onClick={() => setShowForm(!showForm)} className="bg-secondary hover:bg-secondary/90" size="sm">
+          <Button onClick={() => { if (showForm) setEditId(null); setShowForm(!showForm) }} className="bg-secondary hover:bg-secondary/90" size="sm">
             <Plus className="h-4 w-4 mr-1" /> Yeni Fiş
           </Button>
         </div>
@@ -483,7 +505,7 @@ export function AkaryakitClient({ role }: Props) {
         <Card className="border-secondary/30">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
-              <Receipt className="h-5 w-5 text-secondary" /> Yeni Akaryakıt Fişi
+              <Receipt className="h-5 w-5 text-secondary" /> {editId ? 'Fişi Düzenle' : 'Yeni Akaryakıt Fişi'}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -555,9 +577,9 @@ export function AkaryakitClient({ role }: Props) {
               {error && <p className="text-destructive text-sm col-span-full">{error}</p>}
               <div className="col-span-full flex gap-2">
                 <Button type="submit" disabled={saving} className="bg-secondary hover:bg-secondary/90">
-                  {saving ? 'Kaydediliyor...' : 'Kaydet'}
+                  {saving ? 'Kaydediliyor...' : editId ? 'Güncelle' : 'Kaydet'}
                 </Button>
-                <Button type="button" variant="outline" onClick={() => setShowForm(false)}>İptal</Button>
+                <Button type="button" variant="outline" onClick={() => { setShowForm(false); setEditId(null) }}>İptal</Button>
               </div>
             </form>
           </CardContent>
@@ -661,7 +683,18 @@ export function AkaryakitClient({ role }: Props) {
                       <td className="p-3 text-muted-foreground max-w-[200px] truncate">{k.aciklama || '—'}</td>
                       <td className="p-3 text-muted-foreground">{k.user.name}</td>
                       {isAdmin && (
-                        <td className="p-3 text-right">
+                        <td className="p-3 text-right whitespace-nowrap">
+                          {!k.kaynakIsKaydiId && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-blue-600 hover:text-blue-700"
+                              onClick={() => handleEdit(k)}
+                              title="Düzenle"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
