@@ -12,7 +12,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params
   const body = await req.json()
-  const { plaka, isim, marka, model: modelAd, aktif, sahiplik, sigortaBitisTarihi, muayeneBitisTarihi } = body
+  const { plaka, isim, marka, model: modelAd, aktif, sahiplik, sigortaBitisTarihi, muayeneBitisTarihi, kaskoBitisTarihi, akuDegisimTarihi, akuFiyati, cezaNotu } = body
 
   if (sahiplik !== undefined && sahiplik !== 'KENDI' && sahiplik !== 'KIRALIK') {
     return NextResponse.json({ error: 'Geçersiz sahiplik değeri' }, { status: 400 })
@@ -30,6 +30,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         ...(sahiplik !== undefined && { sahiplik }),
         ...(sigortaBitisTarihi !== undefined && { sigortaBitisTarihi: sigortaBitisTarihi ? new Date(sigortaBitisTarihi) : null }),
         ...(muayeneBitisTarihi !== undefined && { muayeneBitisTarihi: muayeneBitisTarihi ? new Date(muayeneBitisTarihi) : null }),
+        ...(kaskoBitisTarihi !== undefined && { kaskoBitisTarihi: kaskoBitisTarihi ? new Date(kaskoBitisTarihi) : null }),
+        ...(akuDegisimTarihi !== undefined && { akuDegisimTarihi: akuDegisimTarihi ? new Date(akuDegisimTarihi) : null }),
+        ...(akuFiyati !== undefined && { akuFiyati: akuFiyati === '' || akuFiyati === null ? null : Number(akuFiyati) }),
+        ...(cezaNotu !== undefined && { cezaNotu: cezaNotu?.trim() || null }),
       },
     })
     return NextResponse.json(arac)

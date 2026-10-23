@@ -31,6 +31,9 @@ interface AkaryakitKayit {
   user: { name: string }
   santiye: { id: string; ad: string } | null
   aracId?: string
+  yakitCinsi?: string | null
+  yakitAlanPersonel?: string | null
+  fisDurumu?: string | null
   santiyeId?: string | null
   kaynakIsKaydiId?: string | null
 }
@@ -98,9 +101,12 @@ async function akaryakitExceliniOku(file: File): Promise<any[]> {
     const cPlaka = bul('plaka', 'arac')
     const cTutar = (() => { const i = bul('tutar'); return i >= 0 ? i : (() => { const j = bul('toplam', 'bedel'); return j >= 0 ? j : bul('borç', 'borc') })() })()
     const cTur = bul('tür', 'tur')
-    const cFis = bul('fis', 'fiş', 'belge')
+    const cFis = h.findIndex((x) => (x.includes('fis') || x.includes('fiş') || x.includes('belge')) && !x.includes('durum'))
     const cAcik = bul('aciklama', 'açıklama', 'not')
     const cSant = bul('santiye', 'şantiye', 'proje')
+    const cCins = bul('yakitcins', 'yakıtcins', 'yakıt cins')
+    const cAlan = bul('yakıtalan', 'yakitalan', 'alanpersonel')
+    const cFisD = bul('fişdurum', 'fisdurum')
     if (cTarih < 0 || cTutar < 0) continue
     for (let r = hi + 1; r < aoa.length; r++) {
       const row = aoa[r]
@@ -126,6 +132,9 @@ async function akaryakitExceliniOku(file: File): Promise<any[]> {
         fisNo,
         aciklama,
         santiye: cSant >= 0 ? String(row[cSant] ?? '').trim() : '',
+        yakitCinsi: cCins >= 0 ? String(row[cCins] ?? '').trim() : '',
+        yakitAlanPersonel: cAlan >= 0 ? String(row[cAlan] ?? '').trim() : '',
+        fisDurumu: cFisD >= 0 ? String(row[cFisD] ?? '').trim().toLocaleUpperCase('tr-TR') : '',
       })
     }
   }
@@ -162,6 +171,9 @@ export function AkaryakitClient({ role }: Props) {
     aciklama: '',
     aracId: '',
     santiyeId: '',
+    yakitCinsi: '',
+    yakitAlanPersonel: '',
+    fisDurumu: '',
   })
 
   // Misafir araç mı seçili?
@@ -307,7 +319,7 @@ export function AkaryakitClient({ role }: Props) {
         setError(data.error || 'Hata oluştu')
         return
       }
-      setForm({ tarih: new Date().toISOString().slice(0, 10), tutar: '', fisNo: '', aciklama: '', aracId: editId ? '' : form.aracId, santiyeId: editId ? '' : form.santiyeId })
+      setForm({ tarih: new Date().toISOString().slice(0, 10), tutar: '', fisNo: '', aciklama: '', aracId: editId ? '' : form.aracId, santiyeId: editId ? '' : form.santiyeId, yakitCinsi: '', yakitAlanPersonel: '', fisDurumu: '' })
       setEditId(null)
       setShowForm(false)
       setPage(1)
@@ -326,6 +338,9 @@ export function AkaryakitClient({ role }: Props) {
       aciklama: k.aciklama || '',
       aracId: k.aracId || '',
       santiyeId: k.santiyeId || k.santiye?.id || '',
+      yakitCinsi: k.yakitCinsi || '',
+      yakitAlanPersonel: k.yakitAlanPersonel || '',
+      fisDurumu: k.fisDurumu || '',
     })
     setError('')
     setShowForm(true)
@@ -347,6 +362,9 @@ export function AkaryakitClient({ role }: Props) {
       'Tutar (₺)': k.tutar,
       'Şantiye': k.santiye?.ad || '',
       'Fiş No': k.fisNo || '',
+      'Yakıt Cinsi': k.yakitCinsi || '',
+      'Yakıtı Alan': k.yakitAlanPersonel || '',
+      'Fiş Durumu': k.fisDurumu || '',
       'Açıklama': k.aciklama || '',
       'Kaydeden': k.user.name,
     }))
@@ -574,6 +592,37 @@ export function AkaryakitClient({ role }: Props) {
                   placeholder={isMisafirArac ? 'Örn: Kiralık kamyon - ABC Nakliyat' : 'Opsiyonel'}
                 />
               </div>
+              <div>
+                <Label>Yakıt Cinsi</Label>
+                <select
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  value={form.yakitCinsi}
+                  onChange={(e) => setForm({ ...form, yakitCinsi: e.target.value })}
+                >
+                  <option value="">Seçiniz</option>
+                  {['MAZOT', 'BENZİN', 'LPG', 'LPG+BENZİN'].map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label>Yakıtı Alan Personel</Label>
+                <Input
+                  value={form.yakitAlanPersonel}
+                  onChange={(e) => setForm({ ...form, yakitAlanPersonel: e.target.value })}
+                  placeholder="Opsiyonel"
+                />
+              </div>
+              <div>
+                <Label>Fiş Durumu</Label>
+                <select
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  value={form.fisDurumu}
+                  onChange={(e) => setForm({ ...form, fisDurumu: e.target.value })}
+                >
+                  <option value="">Seçiniz</option>
+                  <option value="VAR">Fiş var</option>
+                  <option value="YOK">Fiş yok</option>
+                </select>
+              </div>
               {error && <p className="text-destructive text-sm col-span-full">{error}</p>}
               <div className="col-span-full flex gap-2">
                 <Button type="submit" disabled={saving} className="bg-secondary hover:bg-secondary/90">
@@ -651,6 +700,7 @@ export function AkaryakitClient({ role }: Props) {
                   <th className="text-right p-3 font-semibold">Tutar (₺)</th>
                   <th className="text-left p-3 font-semibold">Şantiye</th>
                   <th className="text-left p-3 font-semibold">Fiş No</th>
+                  <th className="text-left p-3 font-semibold">Yakıt</th>
                   <th className="text-left p-3 font-semibold">Açıklama</th>
                   <th className="text-left p-3 font-semibold">Personel</th>
                   {isAdmin && <th className="text-right p-3 font-semibold">İşlem</th>}
@@ -680,6 +730,11 @@ export function AkaryakitClient({ role }: Props) {
                         ) : '—'}
                       </td>
                       <td className="p-3 text-muted-foreground">{k.fisNo || '—'}</td>
+                      <td className="p-3 text-muted-foreground whitespace-nowrap">
+                        {k.yakitCinsi || '—'}
+                        {k.yakitAlanPersonel && <div className="text-xs">{k.yakitAlanPersonel}</div>}
+                        {k.fisDurumu === 'YOK' && <div className="text-xs text-red-600">fiş yok</div>}
+                      </td>
                       <td className="p-3 text-muted-foreground max-w-[200px] truncate">{k.aciklama || '—'}</td>
                       <td className="p-3 text-muted-foreground">{k.user.name}</td>
                       {isAdmin && (

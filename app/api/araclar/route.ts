@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { plaka, isim, marka, model: modelAd, sahiplik, sigortaBitisTarihi, muayeneBitisTarihi } = body
+  const { plaka, isim, marka, model: modelAd, sahiplik, sigortaBitisTarihi, muayeneBitisTarihi, kaskoBitisTarihi, akuDegisimTarihi, akuFiyati, cezaNotu } = body
 
   if (!plaka?.trim()) {
     return NextResponse.json({ error: 'Plaka zorunludur' }, { status: 400 })
@@ -41,6 +41,10 @@ export async function POST(req: NextRequest) {
         sahiplik: sahiplik || 'KENDI',
         sigortaBitisTarihi: sigortaBitisTarihi ? new Date(sigortaBitisTarihi) : null,
         muayeneBitisTarihi: muayeneBitisTarihi ? new Date(muayeneBitisTarihi) : null,
+        kaskoBitisTarihi: kaskoBitisTarihi ? new Date(kaskoBitisTarihi) : null,
+        akuDegisimTarihi: akuDegisimTarihi ? new Date(akuDegisimTarihi) : null,
+        akuFiyati: akuFiyati !== undefined && akuFiyati !== '' && akuFiyati !== null ? Number(akuFiyati) : null,
+        cezaNotu: cezaNotu?.trim() || null,
       },
     })
     return NextResponse.json(arac, { status: 201 })

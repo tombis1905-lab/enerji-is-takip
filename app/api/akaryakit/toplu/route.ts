@@ -158,6 +158,9 @@ export async function POST(req: NextRequest) {
       aciklama: String(k.aciklama || '').trim() || null,
       aracId: aracMap.get(k.pn)!,
       santiyeId: k.santiye ? santiyeMap.get(norm(k.santiye)) || null : null,
+      yakitCinsi: String(k.yakitCinsi || '').trim() || null,
+      yakitAlanPersonel: String(k.yakitAlanPersonel || '').trim() || null,
+      fisDurumu: String(k.fisDurumu || '').trim() || null,
       userId,
     }))
     .filter((v) => v.aracId)

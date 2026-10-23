@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { tarih, tutar, fisNo, aciklama, aracId, santiyeId } = body
+  const { tarih, tutar, fisNo, aciklama, aracId, santiyeId, yakitCinsi, yakitAlanPersonel, fisDurumu } = body
 
   if (!tarih || tutar === undefined || tutar === null || !aracId) {
     return NextResponse.json({ error: 'Tarih, tutar ve araç zorunludur' }, { status: 400 })
@@ -89,6 +89,9 @@ export async function POST(req: NextRequest) {
         aciklama: aciklama?.trim() || null,
         aracId,
         santiyeId: santiyeId?.trim() || null,
+        yakitCinsi: yakitCinsi?.trim() || null,
+        yakitAlanPersonel: yakitAlanPersonel?.trim() || null,
+        fisDurumu: fisDurumu?.trim() || null,
         userId: (session.user as any).id,
       },
       include: {

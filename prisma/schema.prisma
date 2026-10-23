@@ -102,6 +102,11 @@ model Arac {
   sahiplik    AracSahiplik @default(KENDI)
   sigortaBitisTarihi DateTime?
   muayeneBitisTarihi DateTime?
+  // Şirket Araç Takip Excel'indeki ek alanlar
+  kaskoBitisTarihi   DateTime?
+  akuDegisimTarihi   DateTime?
+  akuFiyati          Float?
+  cezaNotu           String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   akaryakitKayitlari AkaryakitKaydi[]
@@ -136,6 +141,10 @@ model AkaryakitKaydi {
   // silinirse/değişirse bu kayıt da otomatik silinir/güncellenir, elle
   // düzenlenmemesi/silinmemesi gerekir (bkz. lib/proje-akaryakit-sync.ts).
   kaynakIsKaydiId String? @unique
+  // Yakıt Takip Raporu alanları: MAZOT / LPG / BENZİN..., yakıtı alan kişi, fiş var mı
+  yakitCinsi      String?
+  yakitAlanPersonel String?
+  fisDurumu       String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   arac        Arac      @relation(fields: [aracId], references: [id])
@@ -643,4 +652,43 @@ model ProjeEkMaliyet {
   updatedAt DateTime @updatedAt
 
   @@index([santiyeId])
+}
+
+
+// ---------------------------------------------------------------------------
+// Personel Hesapları (PIN korumalı): her personel için maaş hakedişi, avans /
+// banka ödemeleri ve harcamalarının cari hesap ekstresi. Bakiye =
+// toplam hakedilen − toplam ödenen. Pozitif: firma personele borçlu,
+// negatif: personel firmaya borçlu. 2025'ten devir de bir hareket olarak
+// (tur=DEVIR) tutulur.
+// ---------------------------------------------------------------------------
+model PersonelHesap {
+  id          String   @id @default(cuid())
+  ad          String   @unique
+  maas        Float?
+  iseBaslama  DateTime?
+  istenCikis  DateTime?
+  notlar      String?
+  aktif       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  hareketler  PersonelHesapHareket[]
+}
+
+model PersonelHesapHareket {
+  id         String        @id @default(cuid())
+  hesapId    String
+  hesap      PersonelHesap @relation(fields: [hesapId], references: [id], onDelete: Cascade)
+  tarih      DateTime?
+  // DEVIR | MAAS | ODEME | HARCAMA | DIGER
+  tur        String        @default("DIGER")
+  aciklama   String?
+  hakedilen  Float         @default(0)
+  odenen     Float         @default(0)
+  sirket     String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([hesapId])
+  @@index([tarih])
 }

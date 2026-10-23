@@ -9,6 +9,7 @@ import { ClipboardList, Calendar, CalendarDays, CalendarRange, Building2, MapPin
 import { FadeIn } from '@/components/ui/animate'
 import * as XLSX from 'xlsx'
 import { CekHatirlatma } from '@/components/cek-hatirlatma'
+import { AracHatirlatma } from '@/components/arac-hatirlatma'
 
 interface SantiyeKirilimTur {
   ad: string
@@ -225,6 +226,7 @@ export function DashboardClient({ role }: { role: string }) {
       </FadeIn>
 
       {role === 'ADMIN' && <CekHatirlatma />}
+      {role === 'ADMIN' && <AracHatirlatma />}
 
       {/* Sade özet şeridi */}
       <FadeIn>

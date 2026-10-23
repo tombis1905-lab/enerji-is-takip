@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Plus, Pencil, Trash2, Download, Receipt } from 'lucide-react'
+import { Plus, Pencil, Trash2, Download, Receipt, Upload } from 'lucide-react'
+import { haftalikExceliniOku } from '@/lib/haftalik-excel'
 import { getISOWeek, startOfISOWeek, endOfISOWeek } from 'date-fns'
 import * as XLSX from 'xlsx'
 
@@ -111,6 +112,54 @@ export function HaftalikOdemelerClient({ faturalar, sirketler }: { faturalar: Fa
   }, [])
 
   useEffect(() => { fetchAll() }, [fetchAll])
+
+  // Excel'den aktarım
+  const [impAcik, setImpAcik] = useState(false)
+  const [impSatirlar, setImpSatirlar] = useState<any[]>([])
+  const [impOnizleme, setImpOnizleme] = useState<any>(null)
+  const [impVarsayilan, setImpVarsayilan] = useState('')
+  const [impIsleniyor, setImpIsleniyor] = useState(false)
+  const [impHata, setImpHata] = useState('')
+  const [impSonuc, setImpSonuc] = useState('')
+
+  const impIste = async (satirlar: any[], uygula: boolean, varsayilan: string) => {
+    setImpIsleniyor(true)
+    setImpHata('')
+    try {
+      const res = await fetch('/api/haftalik-odemeler/toplu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ satirlar, uygula, varsayilanSirketId: varsayilan || undefined }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setImpHata(d.error || 'Hata'); return null }
+      return d
+    } finally {
+      setImpIsleniyor(false)
+    }
+  }
+  const impDosyaSec = async (file: File) => {
+    setImpHata(''); setImpSonuc(''); setImpOnizleme(null)
+    try {
+      const satirlar = haftalikExceliniOku(await file.arrayBuffer())
+      if (satirlar.length === 0) { setImpHata('Haftalık ödeme bloğu bulunamadı. Başlıklar: FATURA NO, TARİH, YAPILAN İŞ, FİRMA, IBAN BİLGİSİ, KDV DAHİL TUTAR, YÜKLENİCİ'); return }
+      setImpSatirlar(satirlar)
+      const d = await impIste(satirlar, false, impVarsayilan)
+      if (d) setImpOnizleme(d)
+    } catch (e: any) { setImpHata('Dosya okunamadı: ' + (e?.message || '')) }
+  }
+  const impVarsayilanDegisti = async (v: string) => {
+    setImpVarsayilan(v)
+    if (impSatirlar.length) { const d = await impIste(impSatirlar, false, v); if (d) setImpOnizleme(d) }
+  }
+  const impUygula = async () => {
+    const d = await impIste(impSatirlar, true, impVarsayilan)
+    if (d) {
+      setImpSonuc(`${d.eklenecek} ödeme eklendi (${d.haftaSayisi} hafta). ${d.atlanan + d.faturadaVar} kayıt zaten vardı, atlandı.`)
+      setImpOnizleme(null); setImpSatirlar([])
+      fetchAll()
+    }
+  }
 
   const resetForm = () => {
     setForm({ ...EMPTY_FORM })
@@ -289,11 +338,52 @@ export function HaftalikOdemelerClient({ faturalar, sirketler }: { faturalar: Fa
               <Download className="h-4 w-4 mr-1" /> Excel
             </Button>
           )}
+          <Button variant="outline" size="sm" onClick={() => { setImpAcik(!impAcik); setImpSonuc('') }}>
+            <Upload className="h-4 w-4 mr-1" /> Excel'den Aktar
+          </Button>
           <Button onClick={() => { resetForm(); setShowForm(true) }} className="bg-secondary hover:bg-secondary/90" size="sm">
             <Plus className="h-4 w-4 mr-1" /> Faturasız Ödeme Ekle
           </Button>
         </div>
       </div>
+
+      {impAcik && (
+        <Card className="border-green-300 dark:border-green-900">
+          <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Upload className="h-4 w-4" /> Excel'den Haftalık Ödemeler Aktar</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              "HAFTALIK ÖDEMELER" dosyası: her haftanın bloğu (başlıkta tarih ve firma yazan) okunur; ödeme tarihi başlıktaki son tarih, şirket başlıktan ya da "Ödeme Yapan Firma" sütunundan alınır. Tekrar yüklerseniz aynı kayıtlar çoğalmaz, Faturalar'da zaten kayıtlı olanlar atlanır.
+            </p>
+            <input type="file" accept=".xlsx,.xls" className="text-sm" onChange={(e) => { const f = e.target.files?.[0]; if (f) impDosyaSec(f); e.target.value = '' }} />
+            {impHata && <p className="text-destructive text-sm">{impHata}</p>}
+            {impSonuc && <p className="text-green-700 dark:text-green-400 text-sm font-medium">{impSonuc}</p>}
+            {impOnizleme && (
+              <div className="space-y-2 text-sm">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="rounded border p-2"><div className="text-xs text-muted-foreground">Eklenecek</div><div className="font-bold">{impOnizleme.eklenecek} ödeme</div><div className="text-xs">{new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(impOnizleme.eklenecekToplam)} · {impOnizleme.haftaSayisi} hafta</div></div>
+                  <div className="rounded border p-2"><div className="text-xs text-muted-foreground">Zaten var</div><div className="font-bold">{impOnizleme.atlanan}</div></div>
+                  <div className="rounded border p-2"><div className="text-xs text-muted-foreground">Faturalar'da kayıtlı</div><div className="font-bold">{impOnizleme.faturadaVar}</div></div>
+                  <div className="rounded border p-2"><div className="text-xs text-muted-foreground">Şirketi belirsiz</div><div className="font-bold">{impOnizleme.sirketsiz}</div></div>
+                </div>
+                {(impOnizleme.sirketsiz > 0 || impOnizleme.bilinmeyenKodlar.length > 0) && (
+                  <div className="rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2 space-y-1">
+                    <p className="text-xs">
+                      Bazı eski haftalarda ödeyen şirket yazmıyor{impOnizleme.bilinmeyenKodlar.length > 0 ? ` (sistemde bulunamayan: ${impOnizleme.bilinmeyenKodlar.join(', ')})` : ''}. Bunlar hangi şirkete yazılsın?
+                    </p>
+                    <select className="h-9 rounded-md border border-input bg-background px-3 text-sm" value={impVarsayilan} onChange={(e) => impVarsayilanDegisti(e.target.value)}>
+                      <option value="">Aktarma (atla)</option>
+                      {sirketler.map((s) => <option key={s.id} value={s.id}>{s.ad}</option>)}
+                    </select>
+                  </div>
+                )}
+                <Button size="sm" disabled={impIsleniyor || impOnizleme.eklenecek === 0} onClick={impUygula} className="bg-secondary hover:bg-secondary/90">
+                  {impIsleniyor ? 'Aktarılıyor...' : `${impOnizleme.eklenecek} ödemeyi aktar`}
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <p className="text-xs text-muted-foreground">
         Faturalar sekmesinde "Aldığımız Fatura" olarak girilen ve şirketi dolu olan faturalar buraya otomatik düşer — ödenmiş olsun olmasın, o haftanın tüm faturaları burada görünür (salt okunur, düzenlemek için Faturalar sekmesini kullanın).

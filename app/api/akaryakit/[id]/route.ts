@@ -23,7 +23,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params
   const body = await req.json()
-  const { tarih, tutar, fisNo, aciklama, aracId, santiyeId } = body
+  const { tarih, tutar, fisNo, aciklama, aracId, santiyeId, yakitCinsi, yakitAlanPersonel, fisDurumu } = body
 
   const kayit = await prisma.akaryakitKaydi.update({
     where: { id },
@@ -34,6 +34,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       ...(aciklama !== undefined && { aciklama: aciklama?.trim() || null }),
       ...(aracId && { aracId }),
       ...(santiyeId !== undefined && { santiyeId: santiyeId?.trim() || null }),
+      ...(yakitCinsi !== undefined && { yakitCinsi: yakitCinsi?.trim() || null }),
+      ...(yakitAlanPersonel !== undefined && { yakitAlanPersonel: yakitAlanPersonel?.trim() || null }),
+      ...(fisDurumu !== undefined && { fisDurumu: fisDurumu?.trim() || null }),
     },
     include: {
       arac: { select: { plaka: true } },

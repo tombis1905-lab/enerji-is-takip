@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Truck, Plus, Pencil, Trash2, Check, Ban, Download, ShieldCheck, ClipboardCheck, AlertTriangle } from 'lucide-react'
+import { Truck, Plus, Pencil, Trash2, Check, Ban, Download, Upload, ShieldCheck, ClipboardCheck, AlertTriangle, BatteryCharging } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 type Sahiplik = 'KENDI' | 'KIRALIK'
@@ -22,6 +22,10 @@ interface Arac {
   sahiplik: Sahiplik
   sigortaBitisTarihi: string | null
   muayeneBitisTarihi: string | null
+  kaskoBitisTarihi?: string | null
+  akuDegisimTarihi?: string | null
+  akuFiyati?: number | null
+  cezaNotu?: string | null
   _count?: { akaryakitKayitlari: number }
 }
 
@@ -59,15 +63,109 @@ function DurumBadge({ tarihStr: t }: { tarihStr: string | null }) {
   )
 }
 
+// ---- Şirket Araç Takip Excel'ini okur (başlıklar otomatik tanınır) ----
+const trN = (v: any) =>
+  String(v ?? '').toLocaleLowerCase('tr-TR').replace(/ı/g, 'i').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ö/g, 'o').replace(/ç/g, 'c').replace(/[^a-z0-9]+/g, '')
+
+function exTarih(v: any): string {
+  if (v === null || v === undefined || v === '') return ''
+  if (typeof v === 'number') {
+    const d = XLSX.SSF.parse_date_code(v)
+    return d && d.y >= 2000 ? `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}` : ''
+  }
+  const t = String(v).trim()
+  let m = t.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/)
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+  m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+  return m ? `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}` : ''
+}
+
+async function aracExceliniOku(file: File): Promise<any[]> {
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' })
+  const out: any[] = []
+  for (const ad of wb.SheetNames) {
+    const aoa: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[ad], { header: 1, raw: true, defval: '' })
+    let hi = -1
+    for (let i = 0; i < Math.min(10, aoa.length); i++) {
+      if (aoa[i].map(trN).some((x) => x.startsWith('plaka'))) { hi = i; break }
+    }
+    if (hi < 0) continue
+    const h = aoa[hi].map(trN)
+    const col = (...k: string[]) => h.findIndex((x) => k.some((a) => x.includes(a)))
+    const cPlaka = col('plaka'), cMarka = col('marka'), cKul = col('kullanan')
+    const cMuay = h.findIndex((x) => x.includes('muayene') && !x.includes('gelecek')), cSig = h.findIndex((x) => x.includes('sigorta') && !x.includes('bedel'))
+    const cKasko = col('kasko'), cAkuT = h.findIndex((x) => x.includes('aku') && x.includes('tarih')), cAkuF = h.findIndex((x) => x.includes('aku') && x.includes('fiyat'))
+    const cCeza = col('ceza')
+    const cGelecekMuay = col('gelecekmuayene')
+    for (let r = hi + 1; r < aoa.length; r++) {
+      const row = aoa[r]
+      const plaka = String(row[cPlaka] ?? '').trim()
+      if (!plaka || !/\d/.test(plaka)) continue
+      out.push({
+        plaka,
+        marka: cMarka >= 0 ? String(row[cMarka] ?? '').trim() : '',
+        isim: cKul >= 0 ? String(row[cKul] ?? '').trim() : '',
+        // "Gelecek Muayene" doluysa yaklaşan bitiş odur; yoksa Muayene Tarihi
+        muayene: exTarih(cGelecekMuay >= 0 ? row[cGelecekMuay] : '') || (cMuay >= 0 ? exTarih(row[cMuay]) : ''),
+        sigorta: cSig >= 0 ? exTarih(row[cSig]) : '',
+        kasko: cKasko >= 0 ? exTarih(row[cKasko]) : '',
+        akuTarih: cAkuT >= 0 ? exTarih(row[cAkuT]) : '',
+        akuFiyat: cAkuF >= 0 && typeof row[cAkuF] === 'number' ? row[cAkuF] : 0,
+        ceza: cCeza >= 0 ? String(row[cCeza] ?? '').trim() : '',
+      })
+    }
+  }
+  return out
+}
+
 export function AraclarClient() {
   const [araclar, setAraclar] = useState<Arac[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState({ plaka: '', isim: '', marka: '', model: '', sahiplik: 'KENDI' as Sahiplik, sigortaBitisTarihi: '', muayeneBitisTarihi: '' })
+  const [form, setForm] = useState({ plaka: '', isim: '', marka: '', model: '', sahiplik: 'KENDI' as Sahiplik, sigortaBitisTarihi: '', muayeneBitisTarihi: '', kaskoBitisTarihi: '', akuDegisimTarihi: '', akuFiyati: '', cezaNotu: '' })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [detayArac, setDetayArac] = useState<Arac | null>(null)
+
+  // Excel'den aktarım
+  const [impAcik, setImpAcik] = useState(false)
+  const [impSatirlar, setImpSatirlar] = useState<any[]>([])
+  const [impOnizleme, setImpOnizleme] = useState<any>(null)
+  const [impIsleniyor, setImpIsleniyor] = useState(false)
+  const [impHata, setImpHata] = useState('')
+  const [impSonuc, setImpSonuc] = useState('')
+
+  const impIste = async (satirlar: any[], uygula: boolean) => {
+    setImpIsleniyor(true)
+    setImpHata('')
+    try {
+      const res = await fetch('/api/araclar/toplu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ satirlar, uygula }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setImpHata(d.error || 'Hata'); return null }
+      return d
+    } finally {
+      setImpIsleniyor(false)
+    }
+  }
+  const impDosyaSec = async (file: File) => {
+    setImpHata(''); setImpSonuc(''); setImpOnizleme(null)
+    try {
+      const satirlar = await aracExceliniOku(file)
+      if (satirlar.length === 0) { setImpHata('Plaka içeren satır bulunamadı (başlıklar: Marka, Plaka No, Kullanan...)'); return }
+      setImpSatirlar(satirlar)
+      const d = await impIste(satirlar, false)
+      if (d) setImpOnizleme(d)
+    } catch (e: any) { setImpHata('Dosya okunamadı: ' + (e?.message || '')) }
+  }
+  const impUygula = async () => {
+    const d = await impIste(impSatirlar, true)
+    if (d) { setImpSonuc(`${d.yeni} yeni araç eklendi, ${d.guncel} araç güncellendi.`); setImpOnizleme(null); setImpSatirlar([]); fetchAraclar() }
+  }
 
   const fetchAraclar = useCallback(async () => {
     const res = await fetch('/api/araclar')
@@ -78,7 +176,7 @@ export function AraclarClient() {
   useEffect(() => { fetchAraclar() }, [fetchAraclar])
 
   const resetForm = () => {
-    setForm({ plaka: '', isim: '', marka: '', model: '', sahiplik: 'KENDI', sigortaBitisTarihi: '', muayeneBitisTarihi: '' })
+    setForm({ plaka: '', isim: '', marka: '', model: '', sahiplik: 'KENDI', sigortaBitisTarihi: '', muayeneBitisTarihi: '', kaskoBitisTarihi: '', akuDegisimTarihi: '', akuFiyati: '', cezaNotu: '' })
     setShowForm(false)
     setEditId(null)
     setError('')
@@ -118,6 +216,10 @@ export function AraclarClient() {
       sahiplik: a.sahiplik || 'KENDI',
       sigortaBitisTarihi: a.sigortaBitisTarihi ? a.sigortaBitisTarihi.slice(0, 10) : '',
       muayeneBitisTarihi: a.muayeneBitisTarihi ? a.muayeneBitisTarihi.slice(0, 10) : '',
+      kaskoBitisTarihi: a.kaskoBitisTarihi ? a.kaskoBitisTarihi.slice(0, 10) : '',
+      akuDegisimTarihi: a.akuDegisimTarihi ? a.akuDegisimTarihi.slice(0, 10) : '',
+      akuFiyati: a.akuFiyati != null ? String(a.akuFiyati) : '',
+      cezaNotu: a.cezaNotu || '',
     })
     setEditId(a.id)
     setShowForm(true)
@@ -154,6 +256,10 @@ export function AraclarClient() {
       'Durum': a.aktif ? 'Aktif' : 'Pasif',
       'Sigorta Bitiş': tarihStr(a.sigortaBitisTarihi),
       'Muayene Bitiş': tarihStr(a.muayeneBitisTarihi),
+      'Kasko Bitiş': tarihStr(a.kaskoBitisTarihi ?? null),
+      'Akü Değişim': tarihStr(a.akuDegisimTarihi ?? null),
+      'Akü Fiyatı': a.akuFiyati ?? '',
+      'Ceza / Not': a.cezaNotu || '',
       'Fiş Sayısı': a._count?.akaryakitKayitlari ?? 0,
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
@@ -183,11 +289,35 @@ export function AraclarClient() {
               <Download className="h-4 w-4 mr-1" /> Excel
             </Button>
           )}
+          <Button variant="outline" size="sm" onClick={() => { setImpAcik(!impAcik); setImpSonuc('') }}>
+            <Upload className="h-4 w-4 mr-1" /> Excel'den Aktar
+          </Button>
           <Button onClick={() => { resetForm(); setShowForm(true) }} className="bg-secondary hover:bg-secondary/90" size="sm">
             <Plus className="h-4 w-4 mr-1" /> Yeni Araç
           </Button>
         </div>
       </div>
+
+      {impAcik && (
+        <Card className="border-green-300 dark:border-green-900">
+          <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Upload className="h-4 w-4" /> Excel'den Araç Aktar</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              "Şirket Araç Takip" biçimi: Marka, Plaka No, Kullanan, Muayene / Sigorta / Kasko Bitiş, Akü Değişim, Akü Fiyatı, Ceza. Kayıtlı plakalarda yalnızca Excel'de DOLU olan alanlar güncellenir, boş hücre mevcut bilgiyi silmez.
+            </p>
+            <input type="file" accept=".xlsx,.xls" className="text-sm" onChange={(e) => { const f = e.target.files?.[0]; if (f) impDosyaSec(f); e.target.value = '' }} />
+            {impHata && <p className="text-destructive text-sm">{impHata}</p>}
+            {impSonuc && <p className="text-green-700 dark:text-green-400 text-sm font-medium">{impSonuc}</p>}
+            {impOnizleme && (
+              <div className="space-y-2 text-sm">
+                <p><b>{impOnizleme.yeni}</b> yeni araç eklenecek, <b>{impOnizleme.guncel}</b> mevcut araç güncellenecek.</p>
+                {impOnizleme.yeniPlakalar.length > 0 && <p className="text-xs text-muted-foreground">Yeni plakalar: {impOnizleme.yeniPlakalar.join(', ')}</p>}
+                <Button size="sm" disabled={impIsleniyor} onClick={impUygula} className="bg-secondary hover:bg-secondary/90">{impIsleniyor ? 'Aktarılıyor...' : 'Aktar'}</Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {showForm && (
         <Card className="border-secondary/30">
@@ -255,6 +385,22 @@ export function AraclarClient() {
                   onChange={(e) => setForm({ ...form, muayeneBitisTarihi: e.target.value })}
                 />
               </div>
+              <div>
+                <Label className="flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" /> Kasko Bitiş Tarihi</Label>
+                <Input type="date" value={form.kaskoBitisTarihi} onChange={(e) => setForm({ ...form, kaskoBitisTarihi: e.target.value })} />
+              </div>
+              <div>
+                <Label className="flex items-center gap-1"><BatteryCharging className="h-3.5 w-3.5" /> Akü Değişim Tarihi</Label>
+                <Input type="date" value={form.akuDegisimTarihi} onChange={(e) => setForm({ ...form, akuDegisimTarihi: e.target.value })} />
+              </div>
+              <div>
+                <Label>Akü Fiyatı (₺)</Label>
+                <Input type="number" step="0.01" min="0" value={form.akuFiyati} onChange={(e) => setForm({ ...form, akuFiyati: e.target.value })} />
+              </div>
+              <div className="sm:col-span-2 lg:col-span-4">
+                <Label>Ceza Bilgileri / Notlar</Label>
+                <Input value={form.cezaNotu} onChange={(e) => setForm({ ...form, cezaNotu: e.target.value })} placeholder="Trafik cezası, hasar, not..." />
+              </div>
               {error && <p className="text-destructive text-sm col-span-full">{error}</p>}
               <div className="col-span-full flex gap-2">
                 <Button type="submit" disabled={saving} className="bg-secondary hover:bg-secondary/90">
@@ -279,6 +425,7 @@ export function AraclarClient() {
                   <th className="text-left p-3 font-semibold">Sahiplik</th>
                   <th className="text-left p-3 font-semibold">Sigorta</th>
                   <th className="text-left p-3 font-semibold">Muayene</th>
+                  <th className="text-left p-3 font-semibold">Kasko</th>
                   <th className="text-center p-3 font-semibold">Durum</th>
                   <th className="text-right p-3 font-semibold">İşlem</th>
                 </tr>
@@ -286,7 +433,7 @@ export function AraclarClient() {
               <tbody>
                 {araclar.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-10 text-muted-foreground">
+                    <td colSpan={9} className="text-center py-10 text-muted-foreground">
                       <Truck className="h-10 w-10 mx-auto mb-2 opacity-30" />
                       Henüz araç eklenmemiş
                     </td>
@@ -321,6 +468,7 @@ export function AraclarClient() {
                       </td>
                       <td className="p-3"><DurumBadge tarihStr={a.sigortaBitisTarihi} /></td>
                       <td className="p-3"><DurumBadge tarihStr={a.muayeneBitisTarihi} /></td>
+                      <td className="p-3"><DurumBadge tarihStr={a.kaskoBitisTarihi ?? null} /></td>
                       <td className="p-3 text-center">
                         <span className={`text-xs px-2 py-0.5 rounded-full ${
                           a.aktif ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
@@ -386,6 +534,24 @@ export function AraclarClient() {
                     <DurumBadge tarihStr={detayArac.muayeneBitisTarihi} />
                   </div>
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="border rounded-lg p-3 space-y-2">
+                    <div className="flex items-center gap-1.5 text-sm font-medium"><ShieldCheck className="h-4 w-4" /> Kasko</div>
+                    <DurumBadge tarihStr={detayArac.kaskoBitisTarihi ?? null} />
+                  </div>
+                  <div className="border rounded-lg p-3 space-y-1 text-sm">
+                    <div className="flex items-center gap-1.5 font-medium"><BatteryCharging className="h-4 w-4" /> Akü</div>
+                    <div className="text-muted-foreground">Değişim: {tarihStr(detayArac.akuDegisimTarihi ?? null)}</div>
+                    <div className="text-muted-foreground">Fiyat: {detayArac.akuFiyati != null ? `${detayArac.akuFiyati.toLocaleString('tr-TR')} ₺` : '—'}</div>
+                  </div>
+                </div>
+                {detayArac.cezaNotu && (
+                  <div className="border rounded-lg p-3 text-sm">
+                    <div className="font-medium mb-1">Ceza / Not</div>
+                    <div className="text-muted-foreground whitespace-pre-wrap">{detayArac.cezaNotu}</div>
+                  </div>
+                )}
 
                 <Button
                   variant="outline"
