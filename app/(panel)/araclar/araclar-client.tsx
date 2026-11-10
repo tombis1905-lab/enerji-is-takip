@@ -120,6 +120,7 @@ async function aracExceliniOku(file: File): Promise<any[]> {
 
 export function AraclarClient() {
   const [araclar, setAraclar] = useState<Arac[]>([])
+  const [pasifGoster, setPasifGoster] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
@@ -285,6 +286,11 @@ export function AraclarClient() {
           <p className="text-muted-foreground text-sm">Şirket araçlarını, sigorta ve muayene tarihlerini yönetin</p>
         </div>
         <div className="flex gap-2">
+          {araclar.some((a) => !a.aktif) && (
+            <Button variant="ghost" size="sm" onClick={() => setPasifGoster(!pasifGoster)}>
+              {pasifGoster ? 'Pasifleri gizle' : `Pasifleri göster (${araclar.filter((a) => !a.aktif).length})`}
+            </Button>
+          )}
           {araclar.length > 0 && (
             <Button variant="outline" size="sm" onClick={handleExcelExport}>
               <Download className="h-4 w-4 mr-1" /> Excel
@@ -446,7 +452,7 @@ export function AraclarClient() {
                     </td>
                   </tr>
                 ) : (
-                  araclar.map((a) => (
+                  araclar.filter((a) => pasifGoster || a.aktif).map((a) => (
                     <tr key={a.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                       <td className="p-3 font-medium">
                         {a.plaka === 'MİSAFİR ARAÇ' ? (
