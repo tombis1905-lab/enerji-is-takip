@@ -103,7 +103,7 @@ async function aracExceliniOku(file: File): Promise<any[]> {
       if (!plaka || !/\d/.test(plaka)) continue
       out.push({
         plaka,
-        marka: cMarka >= 0 ? String(row[cMarka] ?? '').trim() : '',
+        marka: cMarka >= 0 ? String(row[cMarka] ?? '').trim().replace(/^ISIZU$/i, 'ISUZU').replace(/^RENUALT$/i, 'RENAULT') : '',
         isim: cKul >= 0 ? String(row[cKul] ?? '').trim() : '',
         // "Gelecek Muayene" doluysa yaklaşan bitiş odur; yoksa Muayene Tarihi
         muayene: exTarih(cGelecekMuay >= 0 ? row[cGelecekMuay] : '') || (cMuay >= 0 ? exTarih(row[cMuay]) : ''),
@@ -111,7 +111,7 @@ async function aracExceliniOku(file: File): Promise<any[]> {
         kasko: cKasko >= 0 ? exTarih(row[cKasko]) : '',
         akuTarih: cAkuT >= 0 ? exTarih(row[cAkuT]) : '',
         akuFiyat: cAkuF >= 0 && typeof row[cAkuF] === 'number' ? row[cAkuF] : 0,
-        ceza: cCeza >= 0 ? String(row[cCeza] ?? '').trim() : '',
+        ceza: cCeza >= 0 ? String(row[cCeza] ?? '').trim().replace(/^[-–—]+$/, '') : '',
       })
     }
   }
@@ -135,15 +135,16 @@ export function AraclarClient() {
   const [impIsleniyor, setImpIsleniyor] = useState(false)
   const [impHata, setImpHata] = useState('')
   const [impSonuc, setImpSonuc] = useState('')
+  const [impPasif, setImpPasif] = useState(true)
 
-  const impIste = async (satirlar: any[], uygula: boolean) => {
+  const impIste = async (satirlar: any[], uygula: boolean, pasifYap = false) => {
     setImpIsleniyor(true)
     setImpHata('')
     try {
       const res = await fetch('/api/araclar/toplu', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ satirlar, uygula }),
+        body: JSON.stringify({ satirlar, uygula, pasifYap }),
       })
       const d = await res.json()
       if (!res.ok) { setImpHata(d.error || 'Hata'); return null }
@@ -163,8 +164,8 @@ export function AraclarClient() {
     } catch (e: any) { setImpHata('Dosya okunamadı: ' + (e?.message || '')) }
   }
   const impUygula = async () => {
-    const d = await impIste(impSatirlar, true)
-    if (d) { setImpSonuc(`${d.yeni} yeni araç eklendi, ${d.guncel} araç güncellendi.`); setImpOnizleme(null); setImpSatirlar([]); fetchAraclar() }
+    const d = await impIste(impSatirlar, true, impPasif)
+    if (d) { setImpSonuc(`${d.yeni} yeni araç eklendi, ${d.guncel} araç güncellendi${d.pasifOlan ? `, ${d.pasifOlan} araç pasife alındı` : ''}.`); setImpOnizleme(null); setImpSatirlar([]); fetchAraclar() }
   }
 
   const fetchAraclar = useCallback(async () => {
@@ -312,6 +313,12 @@ export function AraclarClient() {
               <div className="space-y-2 text-sm">
                 <p><b>{impOnizleme.yeni}</b> yeni araç eklenecek, <b>{impOnizleme.guncel}</b> mevcut araç güncellenecek.</p>
                 {impOnizleme.yeniPlakalar.length > 0 && <p className="text-xs text-muted-foreground">Yeni plakalar: {impOnizleme.yeniPlakalar.join(', ')}</p>}
+                {impOnizleme.pasifPlakalar?.length > 0 && (
+                  <label className="flex items-start gap-2 text-xs rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2">
+                    <input type="checkbox" className="mt-0.5" checked={impPasif} onChange={(e) => setImpPasif(e.target.checked)} />
+                    <span>Excel'de olmayan <b>{impOnizleme.pasifPlakalar.length}</b> aracı pasife al (silinmez, listeden ve hatırlatmalardan çıkar, geçmiş kayıtlar kalır): {impOnizleme.pasifPlakalar.join(', ')}</span>
+                  </label>
+                )}
                 <Button size="sm" disabled={impIsleniyor} onClick={impUygula} className="bg-secondary hover:bg-secondary/90">{impIsleniyor ? 'Aktarılıyor...' : 'Aktar'}</Button>
               </div>
             )}

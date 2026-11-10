@@ -23,11 +23,17 @@ export async function POST(req: NextRequest) {
   if (!session?.user || (session.user as any).role !== 'ADMIN') {
     return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 })
   }
-  const { satirlar, uygula } = await req.json()
+  const { satirlar, uygula, pasifYap } = await req.json()
   if (!Array.isArray(satirlar) || satirlar.length === 0) return NextResponse.json({ error: 'Satır yok' }, { status: 400 })
 
-  const mevcut = await prisma.arac.findMany({ select: { id: true, plaka: true } })
+  const mevcut = await prisma.arac.findMany({ select: { id: true, plaka: true, aktif: true } })
   const harita = new Map<string, string>(mevcut.map((a: any) => [norm(a.plaka), a.id]))
+
+  const excelPlakalar = new Set<string>(
+    (satirlar as any[]).map((s) => norm(s.plaka)).filter(Boolean),
+  )
+  // Excel'de olmayan aktif araçlar (misafir araç hariç) → pasife alınacaklar
+  const pasifler = (mevcut as any[]).filter((a) => a.aktif && !excelPlakalar.has(norm(a.plaka)) && norm(a.plaka) !== norm('MİSAFİR ARAÇ'))
 
   let yeni = 0
   let guncel = 0
@@ -44,13 +50,15 @@ export async function POST(req: NextRequest) {
     const t4 = tarih(s.akuTarih); if (t4) data.akuDegisimTarihi = t4
     if (Number(s.akuFiyat) > 0) data.akuFiyati = Number(s.akuFiyat)
     if (s.ceza) data.cezaNotu = String(s.ceza).trim()
+    data.aktif = true
     const id = harita.get(norm(s.plaka))
     if (id) guncel++
     else { yeni++; yeniPlakalar.push(plakaBicimle(s.plaka)) }
     veriler.push({ id, data, plaka: plakaBicimle(s.plaka) })
   }
 
-  if (!uygula) return NextResponse.json({ yeni, guncel, yeniPlakalar, uygulandi: false })
+  const pasifPlakalar = pasifler.map((a: any) => a.plaka)
+  if (!uygula) return NextResponse.json({ yeni, guncel, yeniPlakalar, pasifPlakalar, uygulandi: false })
 
   for (const v of veriler) {
     if (v.id) await prisma.arac.update({ where: { id: v.id }, data: v.data })
@@ -59,5 +67,10 @@ export async function POST(req: NextRequest) {
       harita.set(norm(v.plaka), olusan.id)
     }
   }
-  return NextResponse.json({ yeni, guncel, yeniPlakalar, uygulandi: true })
+  let pasifOlan = 0
+  if (pasifYap && pasifler.length) {
+    const r = await prisma.arac.updateMany({ where: { id: { in: pasifler.map((a: any) => a.id) } }, data: { aktif: false } })
+    pasifOlan = r.count
+  }
+  return NextResponse.json({ yeni, guncel, yeniPlakalar, pasifPlakalar, pasifOlan, uygulandi: true })
 }
